@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEC EDGAR Financial Dashboard</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"></script>
+
+    <style>
+        body { background-color: #0f172a; color: #f1f5f9; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+<div id="root" class="max-w-7xl mx-auto"></div>
+
+<script type="text/babel" data-presets="react">
+    const { useState, useEffect } = React;
+
+    const CONCEPT_MAP = {
+        revenue: [
+            'RevenueFromContractWithCustomerExcludingAssessedTax',
+            'Revenues',
+            'SalesRevenueNet',
+            'SalesRevenueGoodsNet',
+            'RevenueFromContractWithCustomerIncludingAssessedTax'
+        ],
+        netIncome: [
+            'NetIncomeLoss',
+            'NetIncomeLossAvailableToCommonStockholdersBasic',
+            'ProfitLoss'
+        ],
+        operatingCashFlow: [
+            'NetCashProvidedByUsedInOperatingActivities',
+            'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'
+        ],
+        capex: [
+            'PaymentsToAcquirePropertyPlantAndEquipment',
+            'PaymentsForCapitalImprovements'
+        ],
+        assets: ['Assets'],
+        liabilities: ['Liabilities'],
+        equity: ['StockholdersEquity'],
+        eps: ['EarningsPerShareBasic', 'EarningsPerShareDiluted']
+    };
+
+    const PROXY_BASE = "http://localhost:8010/proxy";
+
+    function getFinancialMetric(apiResponse, conceptKeys) {
+        if (!apiResponse?.facts?.['us-gaap']) return [];
+
+        const gaapData = apiResponse.facts['us-gaap'];
+        let combinedData = [];
+
+        for (const key of conceptKeys) {
+            const metric = gaapData[key];
+            if (metric?.units?.USD) {
+                const annualData = metric.units.USD.filter(p => p.form === "10-K" && p.fp === "FY");
+                combinedData = combinedData.concat(annualData);
+            }
+        }
+
+        // Deduplicate by year, keeping most recent filing
+        const yearMap = new Map();
+        combinedData
+            .sort((a, b) => new Date(b.filed) - new Date(a.filed))
+            .forEach(item => {
+                if (!yearMap.has(item.fy)) {
+                    yearMap.set(item.fy, item);
+                }
+            });
+
+        return Array.from(yearMap.values()).sort((a, b) => b.fy - a.fy);
+    }
+
+    const formatCurrency = (val) => {
+        if (val === undefined || val === null) return <span className="text-slate-600">—</span>;
+        const formatted = new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 1
+        }).format(val / 1_000_000);
+        return formatted;
+    };
+
+    const formatPercent = (val) => {
+        if (val === undefined || val === null) return <span className="text-slate-600">—</span>;
+        return val.toFixed(1) + '%';
+    };
+
+    const App = () => {
+        const [inputValue, setInputValue] = useState("AAPL");
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState(null);
+        const [companyInfo, setCompanyInfo] = useState(null);
+        const [financialData, setFinancialData] = useState([]);
+        const [proxyStatus, setProxyStatus] = useState('checking');
+        const [tickerCache, setTickerCache] = useState(null);
+        const [tickerLoading, setTickerLoading] = useState(false);
+
+        // Check proxy and load ticker data on mount
+        useEffect(() => {
+            loadTickerData();
+        }, []);
+
+        const loadTickerData = async () => {
+            setTickerLoading(true);
+            setProxyStatus('checking');
+
+            try {
+                // Try to fetch from local file first (if user downloaded it)
+                let response = await fetch('./company_tickers.json').catch(() => null);
+
+                // If local file doesn't exist, fetch through proxy
+                if (!response || !response.ok) {
+                    console.log('Local ticker file not found, fetching through proxy...');
+                    response = await fetch(`${PROXY_BASE}/files/company_tickers.json`);
+                }
+
+                if (!response.ok) {
+                    throw new Error('Failed to load ticker data');
+                }
+
+                const data = await response.json();
+                setTickerCache(data);
+                setProxyStatus('online'); // If we got here, proxy is working
+                console.log('✅ Ticker data loaded successfully:', Object.keys(data).length, 'companies');
+                console.log('✅ Proxy is working');
+
+            } catch (err) {
+                console.error('❌ Failed to load ticker data:', err);
+                setProxyStatus('offline');
+                setError('Failed to load ticker database. Make sure proxy is running on port 8010.');
+            } finally {
+                setTickerLoading(false);
+            }
+        };
+
+        const loadData = async () => {
+            const ticker = inputValue.trim().toUpperCase();
+
+            setError(null);
+            setCompanyInfo(null);
+            setFinancialData([]);
+
+            if (!ticker) {
+                setError("Please enter a ticker symbol.");
+                return;
+            }
+
+            if (!tickerCache) {
+                setError("Ticker database not loaded yet. Please wait or refresh the page.");
+                return;
+            }
+
+            setLoading(true);
+
+            try {
+                const targetCompany = Object.values(tickerCache).find(c => c.ticker === ticker);
+
+                if (!targetCompany) {
+                    throw new Error(`Ticker "${ticker}" not found in SEC database. Try: AAPL, MSFT, GOOGL, TSLA`);
+                }
+
+                const paddedCik = String(targetCompany.cik_str).padStart(10, '0');
+
+                console.log(`Fetching data for ${ticker} (CIK: ${paddedCik})...`);
+
+                const factsResponse = await fetch(`${PROXY_BASE}/api/xbrl/companyfacts/CIK${paddedCik}.json`);
+
+                if (!factsResponse.ok) {
+                    throw new Error(`Failed to fetch company data (Status: ${factsResponse.status}). The proxy might be down.`);
+                }
+
+                const factsData = await factsResponse.json();
+                console.log('✅ Company data loaded');
+
+                const revData = getFinancialMetric(factsData, CONCEPT_MAP.revenue);
+                const netIncData = getFinancialMetric(factsData, CONCEPT_MAP.netIncome);
+                const ocfData = getFinancialMetric(factsData, CONCEPT_MAP.operatingCashFlow);
+                const capexData = getFinancialMetric(factsData, CONCEPT_MAP.capex);
+                const assetsData = getFinancialMetric(factsData, CONCEPT_MAP.assets);
+                const liabData = getFinancialMetric(factsData, CONCEPT_MAP.liabilities);
+                const equityData = getFinancialMetric(factsData, CONCEPT_MAP.equity);
+                const epsData = getFinancialMetric(factsData, CONCEPT_MAP.eps);
+
+                const allMetrics = [...revData, ...netIncData, ...ocfData, ...capexData, ...assetsData];
+                const yearsList = Array.from(new Set(allMetrics.map(d => d.fy))).sort((a, b) => b - a);
+
+                const processedData = yearsList.map(year => {
+                    const rev = revData.find(d => d.fy === year)?.val;
+                    const net = netIncData.find(d => d.fy === year)?.val;
+                    const ocf = ocfData.find(d => d.fy === year)?.val;
+                    const capex = capexData.find(d => d.fy === year)?.val;
+                    const assets = assetsData.find(d => d.fy === year)?.val;
+                    const liab = liabData.find(d => d.fy === year)?.val;
+                    const equity = equityData.find(d => d.fy === year)?.val;
+                    const eps = epsData.find(d => d.fy === year)?.val;
+
+                    const fcf = (ocf !== undefined && capex !== undefined) ? (ocf - capex) : undefined;
+                    const netMargin = (net !== undefined && rev !== undefined && rev !== 0) ? (net / rev * 100) : undefined;
+                    const roe = (net !== undefined && equity !== undefined && equity !== 0) ? (net / equity * 100) : undefined;
+
+                    return { year, rev, net, ocf, capex, fcf, netMargin, roe, assets, liab, equity, eps };
+                });
+
+                setCompanyInfo({ title: targetCompany.title, cik: paddedCik, ticker });
+                setFinancialData(processedData);
+                setProxyStatus('online'); // Confirm proxy is working
+
+            } catch (err) {
+                console.error('❌ Error:', err);
+                setError(err.message || "Unknown error occurred.");
+
+                // Check if it's a network error
+                if (err.message.includes('fetch')) {
+                    setProxyStatus('offline');
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Enter') loadData();
+        };
+
+        const retryConnection = () => {
+            setError(null);
+            loadTickerData();
+        };
+
+        return (
+            <React.Fragment>
+                <header className="mb-8">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-emerald-400 to-teal-500 bg-clip-text text-transparent">
+                                SEC Financial Dashboard
+                            </h1>
+                            <p className="text-slate-400 mt-2 text-sm">
+                                Powered by data.sec.gov API
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <div className={`h-3 w-3 rounded-full ${
+                                    proxyStatus === 'online' ? 'bg-emerald-500' :
+                                        proxyStatus === 'offline' ? 'bg-red-500' :
+                                            'bg-yellow-500 animate-pulse'
+                                }`}></div>
+                                <span className="text-xs text-slate-400 font-mono">
+                                        Proxy: {proxyStatus}
+                                    </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className={`h-3 w-3 rounded-full ${
+                                    tickerCache ? 'bg-emerald-500' :
+                                        tickerLoading ? 'bg-yellow-500 animate-pulse' :
+                                            'bg-red-500'
+                                }`}></div>
+                                <span className="text-xs text-slate-400 font-mono">
+                                        Tickers: {tickerCache ? Object.keys(tickerCache).length : tickerLoading ? 'loading...' : 'failed'}
+                                    </span>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <div className="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700/50 mb-8">
+                    <div className="flex flex-col md:flex-row gap-4 items-center">
+                        <div className="flex-1 w-full">
+                            <input
+                                type="text"
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Enter ticker (e.g., AAPL, MSFT, TSLA)"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-emerald-400 font-mono font-bold text-lg focus:outline-none focus:border-emerald-500 transition-colors uppercase"
+                                disabled={!tickerCache}
+                            />
+                        </div>
+                        <button
+                            onClick={loadData}
+                            disabled={loading || !tickerCache}
+                            className="w-full md:w-auto flex justify-center items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-900 font-bold px-8 py-3 rounded-xl transition-all shadow-lg hover:shadow-emerald-500/50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loading ? (
+                                <>
+                                    <div className="animate-spin h-5 w-5 border-2 border-slate-900 border-t-transparent rounded-full"></div>
+                                    Loading...
+                                </>
+                            ) : (
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                                    </svg>
+                                    Search
+                                </>
+                            )}
+                        </button>
+                    </div>
+
+                    {companyInfo && !loading && (
+                        <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                            <div className="text-lg font-bold text-emerald-400">{companyInfo.ticker}</div>
+                            <div className="text-sm text-slate-300 mt-1">{companyInfo.title}</div>
+                            <div className="text-xs text-slate-500 mt-1">CIK: {companyInfo.cik}</div>
+                        </div>
+                    )}
+                </div>
+
+                {error && (
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl mb-8 animate-fade-in">
+                        <div className="flex items-start gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            <div className="flex-1">
+                                <div className="font-semibold mb-1">Error</div>
+                                <div className="text-sm">{error}</div>
+                                {proxyStatus === 'offline' && (
+                                    <button
+                                        onClick={retryConnection}
+                                        className="mt-3 text-xs bg-red-500/20 hover:bg-red-500/30 px-3 py-1.5 rounded transition-colors"
+                                    >
+                                        Retry Connection
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {proxyStatus === 'offline' && !loading && !tickerCache && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 p-4 rounded-xl mb-8">
+                        <div className="font-semibold mb-3">⚠️ Proxy Not Detected</div>
+                        <div className="text-sm space-y-3">
+                            <div>
+                                <strong>Quick Start:</strong>
+                            </div>
+                            <div className="bg-slate-900 p-3 rounded font-mono text-xs">
+                                # Install (one time)<br/>
+                                npm install -g local-cors-proxy<br/>
+                                <br/>
+                                # Run proxy<br/>
+                                local-cors-proxy --proxyUrl https://data.sec.gov
+                            </div>
+                            <div className="text-xs text-yellow-300">
+                                💡 Make sure the proxy is running on <strong>localhost:8010</strong>
+                            </div>
+                            <button
+                                onClick={retryConnection}
+                                className="mt-2 bg-yellow-500/20 hover:bg-yellow-500/30 px-4 py-2 rounded text-sm font-semibold transition-colors"
+                            >
+                                ↻ Retry Connection
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {tickerLoading && (
+                    <div className="bg-blue-500/10 border border-blue-500/30 text-blue-400 p-4 rounded-xl mb-8">
+                        <div className="flex items-center gap-3">
+                            <div className="animate-spin h-5 w-5 border-2 border-blue-400 border-t-transparent rounded-full"></div>
+                            <span>Loading ticker database...</span>
+                        </div>
+                    </div>
+                )}
+
+                {companyInfo && !loading && financialData.length > 0 && (
+                    <div className="space-y-6 animate-fade-in">
+                        {/* Income Statement */}
+                        <div className="bg-slate-800 rounded-2xl border border-slate-700/50 overflow-hidden shadow-xl">
+                            <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-emerald-900/20 to-teal-900/20">
+                                <h3 className="font-bold text-lg text-emerald-400">📊 Income Statement</h3>
+                                <p className="text-xs text-slate-400 mt-1">In millions USD</p>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                    <tr className="bg-slate-900/50 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                                        <th className="p-4">Year</th>
+                                        <th className="p-4 text-right">Revenue</th>
+                                        <th className="p-4 text-right">Net Income</th>
+                                        <th className="p-4 text-right">Net Margin</th>
+                                        <th className="p-4 text-right">EPS</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700/30 text-sm">
+                                    {financialData.map((row) => (
+                                        <tr key={row.year} className="hover:bg-slate-700/20 transition-colors">
+                                            <td className="p-4 font-semibold text-slate-300">{row.year}</td>
+                                            <td className="p-4 text-right font-mono text-slate-100">{formatCurrency(row.rev)}</td>
+                                            <td className={`p-4 text-right font-mono ${row.net !== undefined && row.net < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                                {formatCurrency(row.net)}
+                                            </td>
+                                            <td className="p-4 text-right font-mono text-slate-300">{formatPercent(row.netMargin)}</td>
+                                            <td className="p-4 text-right font-mono text-slate-300">
+                                                {row.eps !== undefined ? '$' + row.eps.toFixed(2) : '—'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Cash Flow */}
+                        <div className="bg-slate-800 rounded-2xl border border-slate-700/50 overflow-hidden shadow-xl">
+                            <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-blue-900/20 to-cyan-900/20">
+                                <h3 className="font-bold text-lg text-blue-400">💰 Cash Flow</h3>
+                                <p className="text-xs text-slate-400 mt-1">In millions USD</p>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                    <tr className="bg-slate-900/50 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                                        <th className="p-4">Year</th>
+                                        <th className="p-4 text-right">Operating CF</th>
+                                        <th className="p-4 text-right">CapEx</th>
+                                        <th className="p-4 text-right text-blue-400">Free Cash Flow</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700/30 text-sm">
+                                    {financialData.map((row) => (
+                                        <tr key={row.year} className="hover:bg-slate-700/20 transition-colors">
+                                            <td className="p-4 font-semibold text-slate-300">{row.year}</td>
+                                            <td className="p-4 text-right font-mono text-slate-100">{formatCurrency(row.ocf)}</td>
+                                            <td className="p-4 text-right font-mono text-red-400">{formatCurrency(row.capex)}</td>
+                                            <td className="p-4 text-right font-mono text-blue-400 font-bold">{formatCurrency(row.fcf)}</td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Balance Sheet */}
+                        <div className="bg-slate-800 rounded-2xl border border-slate-700/50 overflow-hidden shadow-xl">
+                            <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-purple-900/20 to-pink-900/20">
+                                <h3 className="font-bold text-lg text-purple-400">🏦 Balance Sheet</h3>
+                                <p className="text-xs text-slate-400 mt-1">In millions USD</p>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                    <tr className="bg-slate-900/50 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                                        <th className="p-4">Year</th>
+                                        <th className="p-4 text-right">Assets</th>
+                                        <th className="p-4 text-right">Liabilities</th>
+                                        <th className="p-4 text-right">Equity</th>
+                                        <th className="p-4 text-right">ROE</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700/30 text-sm">
+                                    {financialData.map((row) => (
+                                        <tr key={row.year} className="hover:bg-slate-700/20 transition-colors">
+                                            <td className="p-4 font-semibold text-slate-300">{row.year}</td>
+                                            <td className="p-4 text-right font-mono text-slate-100">{formatCurrency(row.assets)}</td>
+                                            <td className="p-4 text-right font-mono text-slate-300">{formatCurrency(row.liab)}</td>
+                                            <td className="p-4 text-right font-mono text-purple-400">{formatCurrency(row.equity)}</td>
+                                            <td className="p-4 text-right font-mono text-slate-300">{formatPercent(row.roe)}</td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && !companyInfo && !tickerLoading && tickerCache && (
+                    <div className="text-center py-12 text-slate-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        <p className="text-lg">Enter a ticker to view financial data</p>
+                        <p className="text-sm mt-2">Examples: AAPL, MSFT, GOOGL, AMZN, TSLA</p>
+                        <p className="text-xs mt-4 text-slate-600">{Object.keys(tickerCache).length} companies available</p>
+                    </div>
+                )}
+            </React.Fragment>
+        );
+    };
+
+    const rootElement = document.getElementById('root');
+    if (rootElement) {
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(<App />);
+    }
+</script>
+</body>
+</html>

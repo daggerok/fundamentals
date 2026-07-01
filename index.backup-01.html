@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEC EDGAR Financial Dashboard</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
+    </style>
+</head>
+<body class="text-slate-100 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 text-center md:text-left">
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-teal-500 bg-clip-text text-transparent">
+                data.sec.gov
+            </h1>
+            <p class="text-slate-400 mt-2 text-sm font-mono">
+                requires: bunx local-cors-proxy --proxyUrl https://data.sec.gov
+            </p>
+        </header>
+
+        <div class="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700/50 mb-8">
+            <div class="flex flex-col md:flex-row gap-4 items-center">
+                <div class="flex-1 w-full">
+                    <input type="text" id="tickerInput" value="AVGO" placeholder="TICKER" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500 transition-colors uppercase">
+                </div>
+                <button id="searchBtn" title="Load Data" class="w-full md:w-auto flex justify-center items-center bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-900 font-bold px-6 py-3 rounded-xl transition-all shadow-lg active:scale-95">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                </button>
+            </div>
+            
+            <div id="companyOneLiner" class="hidden mt-3 text-sm text-slate-300 font-medium"></div>
+        </div>
+
+        <div id="errorMessage" class="hidden bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl mb-8 text-sm font-medium"></div>
+
+        <div id="loader" class="hidden text-center py-12">
+            <div class="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent text-emerald-500 rounded-full mb-4"></div>
+        </div>
+
+        <div id="dashboard" class="hidden space-y-8">
+            <div class="bg-slate-800 rounded-2xl border border-slate-700/50 overflow-hidden shadow-xl">
+                <div class="p-6 border-b border-slate-700/50 flex justify-between items-center">
+                    <h3 class="font-bold text-lg">Сводные годовые финансовые показатели (FY)</h3>
+                    <p class="text-xs text-slate-400">В миллионах USD</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900/50 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-700/30">
+                                <th class="p-4">Финансовый год</th>
+                                <th class="p-4 text-right">Выручка (Revenue)</th>
+                                <th class="p-4 text-right">Чистая прибыль (Net Income)</th>
+                                <th class="p-4 text-right">Cash Flow (Ops)</th>
+                                <th class="p-4 text-right">CapEx</th>
+                                <th class="p-4 text-right text-emerald-400">Free Cash Flow</th>
+                            </tr>
+                        </thead>
+                        <tbody id="financialTableBody" class="divide-y divide-slate-700/30 text-sm font-mono"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CONCEPT_MAP = {
+            revenue: ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet', 'SalesRevenueGoodsNet'],
+            netIncome: ['NetIncomeLoss', 'NetIncomeLossAvailableToCommonStockholdersBasic', 'ProfitLoss'],
+            operatingCashFlow: ['NetCashProvidedByUsedInOperatingActivities', 'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'],
+            capex: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsForCapitalImprovements']
+        };
+
+        const PROXY_BASE = "http://localhost:8010/proxy";
+
+        function getFinancialMetric(apiResponse, conceptKeys) {
+            if (!apiResponse || !apiResponse.facts || !apiResponse.facts['us-gaap']) return [];
+            
+            const gaapData = apiResponse.facts['us-gaap'];
+            let combinedData = [];
+            
+            for (let i = 0; i < conceptKeys.length; i++) {
+                const key = conceptKeys[i];
+                const metric = gaapData[key];
+                
+                if (metric && metric.units && metric.units.USD) {
+                    const annualData = metric.units.USD.filter(function(p) {
+                        return p.form === "10-K" && p.fp === "FY";
+                    });
+                    combinedData = combinedData.concat(annualData);
+                }
+            }
+
+            const uniqueByYear = [];
+            const seenYears = new Set();
+            
+            for (let i = combinedData.length - 1; i >= 0; i--) {
+                const item = combinedData[i];
+                if (!seenYears.has(item.fy)) {
+                    seenYears.add(item.fy);
+                    uniqueByYear.push(item);
+                }
+            }
+            
+            return uniqueByYear;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchBtn = document.getElementById('searchBtn');
+            const tickerInput = document.getElementById('tickerInput');
+            const loader = document.getElementById('loader');
+            const errorDiv = document.getElementById('errorMessage');
+            const dashboard = document.getElementById('dashboard');
+            const companyOneLiner = document.getElementById('companyOneLiner');
+
+            tickerInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    searchBtn.click();
+                }
+            });
+
+            searchBtn.addEventListener('click', async function() {
+                const ticker = tickerInput.value.trim().toUpperCase();
+                
+                errorDiv.classList.add('hidden');
+                dashboard.classList.add('hidden');
+                companyOneLiner.classList.add('hidden');
+                
+                if (!ticker) {
+                    errorDiv.innerText = "Пожалуйста, введите тикер.";
+                    errorDiv.classList.remove('hidden');
+                    return;
+                }
+
+                loader.classList.remove('hidden');
+
+                try {
+                    const tickerMapResponse = await fetch('./company_tickers.json');
+                    if (!tickerMapResponse.ok) {
+                        throw new Error("Не удалось прочитать локальный файл 'company_tickers.json'. Убедитесь, что он скачан и лежит рядом с index.html.");
+                    }
+                    
+                    const tickerMap = await tickerMapResponse.json();
+                    
+                    const targetCompany = Object.values(tickerMap).find(function(c) {
+                        return c.ticker === ticker;
+                    });
+
+                    if (!targetCompany) {
+                        throw new Error("Тикер \"" + ticker + "\" не найден в официальной базе SEC.");
+                    }
+
+                    const paddedCik = String(targetCompany.cik_str).padStart(10, '0');
+
+                    const factsResponse = await fetch(PROXY_BASE + "/api/xbrl/companyfacts/CIK" + paddedCik + ".json");
+
+                    if (!factsResponse.ok) {
+                        throw new Error("Ошибка сервера или прокси (Код: " + factsResponse.status + "). Убедитесь, что запущен прокси с --headers.");
+                    }
+                    
+                    const factsData = await factsResponse.json();
+
+                    const revData = getFinancialMetric(factsData, CONCEPT_MAP.revenue);
+                    const netIncData = getFinancialMetric(factsData, CONCEPT_MAP.netIncome);
+                    const ocfData = getFinancialMetric(factsData, CONCEPT_MAP.operatingCashFlow);
+                    const capexData = getFinancialMetric(factsData, CONCEPT_MAP.capex);
+
+                    const allMetrics = [].concat(revData, netIncData, ocfData, capexData);
+                    const rawYears = allMetrics.map(function(d) { return d.fy; });
+                    const years = Array.from(new Set(rawYears)).sort(function(a, b) { return b - a; });
+
+                    // Обновляем One-liner под инпутом
+                    companyOneLiner.innerText = targetCompany.title + " SEC CIK: " + paddedCik;
+                    companyOneLiner.classList.remove('hidden');
+
+                    const tbody = document.getElementById('financialTableBody');
+                    tbody.innerHTML = '';
+
+                    if (years.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-slate-500">Нет годовых данных US-GAAP для этого тикера.</td></tr>';
+                    }
+
+                    years.forEach(function(year) {
+                        const revObj = revData.find(function(d) { return d.fy === year; });
+                        const netObj = netIncData.find(function(d) { return d.fy === year; });
+                        const ocfObj = ocfData.find(function(d) { return d.fy === year; });
+                        const capObj = capexData.find(function(d) { return d.fy === year; });
+
+                        const rev = revObj ? revObj.val : undefined;
+                        const net = netObj ? netObj.val : undefined;
+                        const ocf = ocfObj ? ocfObj.val : undefined;
+                        const capex = capObj ? capObj.val : undefined;
+                        
+                        const fcf = (ocf !== undefined && capex !== undefined) ? (ocf - capex) : undefined;
+
+                        const format = function(val) {
+                            if (val === undefined || val === null) return '<span class="text-slate-600">—</span>';
+                            return new Intl.NumberFormat('en-US').format(parseFloat((val / 1000000).toFixed(1)));
+                        };
+
+                        const tr = document.createElement('tr');
+                        tr.className = "hover:bg-slate-700/20 transition-colors border-b border-slate-700/20";
+                        
+                        const netClass = (net && net < 0) ? 'text-red-400' : 'text-slate-100';
+
+                        tr.innerHTML = `
+                            <td class="p-4 font-semibold text-slate-300">${year}</td>
+                            <td class="p-4 text-right text-slate-100">${format(rev)}</td>
+                            <td class="p-4 text-right ${netClass}">${format(net)}</td>
+                            <td class="p-4 text-right text-slate-300">${format(ocf)}</td>
+                            <td class="p-4 text-right text-slate-400">${format(capex)}</td>
+                            <td class="p-4 text-right text-emerald-400 font-bold">${format(fcf)}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+
+                    dashboard.classList.remove('hidden');
+                } catch (err) {
+                    errorDiv.innerText = err.message;
+                    errorDiv.classList.remove('hidden');
+                } finally {
+                    loader.classList.add('hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
