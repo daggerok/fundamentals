@@ -148,3 +148,10 @@ fundamentals/
 - [fundamentals-runtime](https://github.com/daggerok/fundamentals-runtime) — предыдущая Babel/HTML версия (источник dual-proxy UX)
 - [options-desk](https://github.com/daggerok/options-desk) — архитектурный baseline
 - [SEC EDGAR API](https://www.sec.gov/edgar/sec-api-documentation)
+
+---
+
+## Dependency updates (как в csv)
+
+- **CI** job `npm-check-updates` — на каждый push/PR проверяет, что `bunx npm-check-updates -u` + install + build проходят (без коммита).
+- **Ручной апгрейд и push**: Actions → **Dependency Updates** → Run workflow (ветка, commit message). Обновляет `package.json` / `bun.lock`, билдит, коммитит и пушит, затем триггерит GitHub Pages.
