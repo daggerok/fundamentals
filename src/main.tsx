@@ -22,19 +22,48 @@ const LS_LANG = 'sec-lang';
 const translations: Record<Language, Record<string, string>> = {
   en: {
     'search.placeholder': 'Ticker or company name…',
-    'search.load': 'Load',
+    'search.load': 'Load data',
     'proxy.title': 'Start two proxy terminals:',
     'proxy.retry': '↻ Retry',
     'proxy.orBun': 'Or one Bun proxy:',
     'error.retry': 'Retry',
     'no.data': 'Enter a ticker (AAPL, MSFT, NVDA…)',
-    'console.toggle': 'Toggle console',
-    'docs': 'docs',
+    'console.toggle': 'Toggle debug console',
     'metric': 'Metric',
     'section.income': '📊 Income Statement',
     'section.cash': '💰 Cash Flow',
     'section.balance': '🏦 Balance Sheet',
     'section.pershare': '📈 Per Share & Other',
+    'tip.theme': 'Theme: light / dark',
+    'tip.lang': 'Language',
+    'tip.settings': 'Settings',
+    'tip.view': 'Charts / table',
+    'tip.mode': 'Annual / quarterly',
+    'tip.search': 'Search ticker',
+    'tip.load': 'Load company data',
+    'tip.proxy': 'Proxy status (www / data)',
+    'settings.title': 'Settings',
+    'settings.display': 'Display',
+    'settings.data': 'Data & proxy',
+    'settings.debug': 'Debug',
+    'settings.theme': 'Theme',
+    'settings.lang': 'Language',
+    'settings.view': 'View',
+    'settings.mode': 'Period',
+    'settings.scale': 'Table / chart scale',
+    'settings.console': 'Debug console',
+    'settings.proxyWww': 'www.sec.gov proxy',
+    'settings.proxyData': 'data.sec.gov proxy',
+    'settings.clearCache': 'Clear cached company',
+    'settings.close': 'Close',
+    'view.charts': 'Charts',
+    'view.table': 'Table',
+    'mode.annual': 'Annual',
+    'mode.quarterly': 'Quarterly',
+    'theme.dark': 'Dark',
+    'theme.light': 'Light',
+    'on': 'On',
+    'off': 'Off',
   },
   ru: {
     'search.placeholder': 'Тикер или название компании…',
@@ -44,13 +73,42 @@ const translations: Record<Language, Record<string, string>> = {
     'proxy.orBun': 'Или один Bun-прокси:',
     'error.retry': 'Повтор',
     'no.data': 'Введите тикер (AAPL, MSFT, NVDA…)',
-    'console.toggle': 'Консоль',
-    'docs': 'docs',
+    'console.toggle': 'Консоль отладки',
     'metric': 'Метрика',
     'section.income': '📊 Отчёт о прибылях и убытках',
     'section.cash': '💰 Денежный поток',
     'section.balance': '🏦 Баланс',
     'section.pershare': '📈 На акцию и прочее',
+    'tip.theme': 'Тема: светлая / тёмная',
+    'tip.lang': 'Язык',
+    'tip.settings': 'Настройки',
+    'tip.view': 'Графики / таблица',
+    'tip.mode': 'Годовой / квартальный',
+    'tip.search': 'Поиск тикера',
+    'tip.load': 'Загрузить данные компании',
+    'tip.proxy': 'Статус прокси (www / data)',
+    'settings.title': 'Настройки',
+    'settings.display': 'Отображение',
+    'settings.data': 'Данные и прокси',
+    'settings.debug': 'Отладка',
+    'settings.theme': 'Тема',
+    'settings.lang': 'Язык',
+    'settings.view': 'Вид',
+    'settings.mode': 'Период',
+    'settings.scale': 'Масштаб таблицы / графиков',
+    'settings.console': 'Консоль отладки',
+    'settings.proxyWww': 'Прокси www.sec.gov',
+    'settings.proxyData': 'Прокси data.sec.gov',
+    'settings.clearCache': 'Очистить кэш компании',
+    'settings.close': 'Закрыть',
+    'view.charts': 'Графики',
+    'view.table': 'Таблица',
+    'mode.annual': 'Годовой',
+    'mode.quarterly': 'Квартальный',
+    'theme.dark': 'Тёмная',
+    'theme.light': 'Светлая',
+    'on': 'Вкл',
+    'off': 'Выкл',
   },
 };
 
@@ -611,6 +669,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(!!prefs.showDebug);
+  const [showSettings, setShowSettings] = useState(false);
   const [company, setCompany] = useState<any>(cached?.company || null);
   const [tickers, setTickers] = useState<any>(null);
   const [tkL, setTkL] = useState(false);
@@ -618,7 +677,7 @@ function App() {
   const [dataOk, setDataOk] = useState(!!cached?.company);
   const [wwwBase, setWwwBase] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>(prefs.mode || 'Y');
-  const [view, setView] = useState<View>(prefs.view || 'T');
+  const [view, setView] = useState<View>(prefs.view || 'C');
   const [dark, setDark] = useState(prefs.dark !== false);
   const [factsCache, setFactsCache] = useState<any>(cached?.facts || null);
   const [pd, setPd] = useState<any>(null);
@@ -628,6 +687,7 @@ function App() {
   const [scaleSlider, setScaleSlider] = useState(prefs.scaleSlider ?? DEFAULT_SCALE_SLIDER);
   const iRef = useRef<HTMLInputElement>(null);
   const sRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   const scale = sliderToScale(scaleSlider);
 
@@ -674,10 +734,16 @@ function App() {
         !iRef.current.contains(e.target as Node)
       )
         setShowSug(false);
+      if (
+        showSettings &&
+        settingsRef.current &&
+        !settingsRef.current.contains(e.target as Node)
+      )
+        setShowSettings(false);
     };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
-  }, [showSug]);
+  }, [showSug, showSettings]);
 
   const init = async () => {
     setTkL(true);
@@ -844,34 +910,238 @@ function App() {
     <Fragment>
       <div className={`sticky top-0 z-50 ${bg} backdrop-blur-md border-b ${bdr}`}>
         <div className="px-4 xl:px-8">
-          <div className="flex items-center gap-3 py-3">
+          <div className="flex items-center gap-2 sm:gap-3 py-3">
+            {/* 1. Theme */}
             <button
-              onClick={() => setShowDebug((p) => !p)}
-              className={`flex-shrink-0 text-xs px-2 py-1.5 rounded transition-colors ${
-                showDebug
-                  ? dark
-                    ? 'bg-slate-700 text-slate-300'
-                    : 'bg-slate-200 text-slate-600'
-                  : dark
-                    ? 'text-slate-600 hover:text-slate-400'
-                    : 'text-slate-400 hover:text-slate-600'
+              type="button"
+              onClick={() => setDark((d) => !d)}
+              title={t('tip.theme', lang)}
+              aria-label={t('tip.theme', lang)}
+              className={`flex-shrink-0 text-base leading-none px-2 py-1.5 rounded-lg transition-colors ${
+                dark ? 'text-yellow-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
               }`}
-              title={t('console.toggle', lang)}
             >
-              ⌘
+              {dark ? '☀️' : '🌙'}
             </button>
-            <div
-              className="flex gap-1.5 flex-shrink-0"
-              title={`www: ${wwwOk ? '✓' : '✗'}\ndata: ${dataOk ? '✓' : '…'}`}
-            >
-              <div className={`h-2.5 w-2.5 rounded-full ${wwwOk ? dotOn : 'bg-red-500'}`} />
-              <div
-                className={`h-2.5 w-2.5 rounded-full ${
-                  dataOk ? dotOn : tkL || loading ? 'bg-yellow-400 animate-pulse' : dotOff
-                }`}
+
+            {/* 2. i18n (default EN) */}
+            <div title={t('tip.lang', lang)} className="flex-shrink-0">
+              <Pill
+                value={lang}
+                options={[
+                  { k: 'en', l: '🇺🇸' },
+                  { k: 'ru', l: '🇷🇺' },
+                ]}
+                onChange={(k) => setLang(k as Language)}
+                dark={dark}
+                title={t('tip.lang', lang)}
               />
             </div>
-            <div className="flex-1 min-w-0 relative">
+
+            {/* 3. Settings (mobile-first: all config lives here too) */}
+            <div className="relative flex-shrink-0" ref={settingsRef}>
+              <button
+                type="button"
+                onClick={() => setShowSettings((v) => !v)}
+                title={t('tip.settings', lang)}
+                aria-label={t('tip.settings', lang)}
+                aria-expanded={showSettings}
+                className={`flex-shrink-0 text-base leading-none px-2 py-1.5 rounded-lg transition-colors ${
+                  showSettings
+                    ? dark
+                      ? 'bg-slate-700 text-emerald-400'
+                      : 'bg-slate-200 text-emerald-700'
+                    : dark
+                      ? 'text-slate-300 hover:bg-slate-800'
+                      : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                ⚙️
+              </button>
+              {showSettings && (
+                <div
+                  className={`absolute left-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className={`font-bold text-sm ${t1}`}>⚙️ {t('settings.title', lang)}</div>
+                    <button
+                      type="button"
+                      className={`text-xs px-2 py-1 rounded ${dark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${mt}`}
+                      onClick={() => setShowSettings(false)}
+                      title={t('settings.close', lang)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide ${mt}`}>
+                    {t('settings.display', lang)}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`}>{t('settings.theme', lang)}</span>
+                    <Pill
+                      value={dark ? 'dark' : 'light'}
+                      options={[
+                        { k: 'light', l: '☀️' },
+                        { k: 'dark', l: '🌙' },
+                      ]}
+                      onChange={(k) => setDark(k === 'dark')}
+                      dark={dark}
+                      title={t('tip.theme', lang)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`}>{t('settings.lang', lang)}</span>
+                    <Pill
+                      value={lang}
+                      options={[
+                        { k: 'en', l: '🇺🇸' },
+                        { k: 'ru', l: '🇷🇺' },
+                      ]}
+                      onChange={(k) => setLang(k as Language)}
+                      dark={dark}
+                      title={t('tip.lang', lang)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`}>{t('settings.view', lang)}</span>
+                    <Pill
+                      value={view}
+                      options={[
+                        { k: 'C', l: '◔' },
+                        { k: 'T', l: '⊞' },
+                      ]}
+                      onChange={(k) => setView(k as View)}
+                      dark={dark}
+                      title={t('tip.view', lang)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`}>{t('settings.mode', lang)}</span>
+                    <Pill
+                      value={mode}
+                      options={[
+                        { k: 'Y', l: 'Y' },
+                        { k: 'Q', l: 'Q' },
+                      ]}
+                      onChange={(k) => setMode(k as Mode)}
+                      dark={dark}
+                      title={t('tip.mode', lang)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-xs ${t2}`}>{t('settings.scale', lang)}</span>
+                      <span className={`text-xs font-mono ${mt}`}>{Math.round(scale * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={scaleSlider}
+                      onChange={(e) => setScaleSlider(+e.target.value)}
+                      className="scale-slider w-full"
+                      title={t('settings.scale', lang)}
+                    />
+                  </div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('settings.data', lang)}
+                  </div>
+                  <div className={`text-xs space-y-1.5 font-mono ${t2}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span title={t('settings.proxyWww', lang)}>www</span>
+                      <span className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>
+                        {wwwOk ? '● online' : '● offline'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span title={t('settings.proxyData', lang)}>data</span>
+                      <span className={dataOk ? 'text-emerald-500' : 'text-red-500'}>
+                        {dataOk ? '● online' : '● offline'}
+                      </span>
+                    </div>
+                    {wwwBase && (
+                      <div className={`text-[10px] break-all ${mt}`}>www: {wwwBase}</div>
+                    )}
+                  </div>
+                  <div className="grid gap-2">
+                    <pre
+                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
+                    >{`local-cors-proxy --proxyUrl https://www.sec.gov --port 8011`}</pre>
+                    <pre
+                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
+                    >{`local-cors-proxy --proxyUrl https://data.sec.gov --port 8012`}</pre>
+                    <pre
+                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
+                    >{`bun ./scripts/sec-proxy.ts`}</pre>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cc();
+                      setCompany(null);
+                      setPd(null);
+                      setFactsCache(null);
+                      setDataOk(false);
+                      log('cache cleared');
+                    }}
+                    className={`w-full text-xs font-semibold py-2 rounded-lg border ${bdr} ${hR} ${t1}`}
+                    title={t('settings.clearCache', lang)}
+                  >
+                    🗑️ {t('settings.clearCache', lang)}
+                  </button>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('settings.debug', lang)}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`}>{t('settings.console', lang)}</span>
+                    <Pill
+                      value={showDebug ? 'on' : 'off'}
+                      options={[
+                        { k: 'off', l: t('off', lang) },
+                        { k: 'on', l: t('on', lang) },
+                      ]}
+                      onChange={(k) => setShowDebug(k === 'on')}
+                      dark={dark}
+                      title={t('console.toggle', lang)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Charts / table (default charts) */}
+            <div title={t('tip.view', lang)} className="flex-shrink-0">
+              <Pill
+                value={view}
+                options={[
+                  { k: 'C', l: '◔' },
+                  { k: 'T', l: '⊞' },
+                ]}
+                onChange={(k) => setView(k as View)}
+                dark={dark}
+                title={t('tip.view', lang)}
+              />
+            </div>
+
+            {/* 5. Y / Q (default Y) */}
+            <div title={t('tip.mode', lang)} className="flex-shrink-0">
+              <Pill
+                value={mode}
+                options={[
+                  { k: 'Y', l: 'Y' },
+                  { k: 'Q', l: 'Q' },
+                ]}
+                onChange={(k) => setMode(k as Mode)}
+                dark={dark}
+                title={t('tip.mode', lang)}
+              />
+            </div>
+
+            {/* 6. Search (grows) */}
+            <div className="flex-1 min-w-0 relative" title={t('tip.search', lang)}>
               <input
                 ref={iRef}
                 type="text"
@@ -880,6 +1150,8 @@ function App() {
                 onFocus={hIF}
                 onKeyDown={hKD}
                 placeholder={t('search.placeholder', lang)}
+                title={t('tip.search', lang)}
+                aria-label={t('tip.search', lang)}
                 className={`w-full ${inp} border rounded-lg px-3 py-2 font-mono font-bold text-sm focus:outline-none focus:border-emerald-500 transition-colors uppercase`}
                 disabled={!tickers}
               />
@@ -911,14 +1183,18 @@ function App() {
                 </div>
               )}
             </div>
+
             <button
+              type="button"
               onClick={() => {
                 setShowSug(false);
                 iRef.current?.blur();
                 search(ticker);
               }}
               disabled={loading || !tickers}
-              className="flex-shrink-0 flex items-center bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40"
+              title={t('tip.load', lang)}
+              aria-label={t('tip.load', lang)}
+              className="flex-shrink-0 flex items-center bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-3 sm:px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40"
             >
               {loading ? (
                 <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
@@ -930,6 +1206,7 @@ function App() {
                   strokeWidth={2.5}
                   stroke="currentColor"
                   className="w-4 h-4"
+                  aria-hidden
                 >
                   <path
                     strokeLinecap="round"
@@ -939,50 +1216,21 @@ function App() {
                 </svg>
               )}
             </button>
-            <button
-              onClick={() => setDark((d) => !d)}
-              className={`flex-shrink-0 text-sm px-2 py-1.5 rounded transition-colors ${
-                dark ? 'text-yellow-400 hover:text-yellow-300' : 'text-slate-500 hover:text-slate-700'
-              }`}
+
+            {/* Compact proxy status (also in settings) */}
+            <div
+              className="hidden xs:flex sm:flex gap-1.5 flex-shrink-0"
+              title={t('tip.proxy', lang)}
             >
-              {dark ? '☀' : '🌙'}
-            </button>
-            <Pill
-              value={lang}
-              options={[
-                { k: 'en', l: '🇺🇸' },
-                { k: 'ru', l: '🇷🇺' },
-              ]}
-              onChange={(k) => setLang(k as Language)}
-              dark={dark}
-              title="Language / Язык"
-            />
-            <a
-              href="https://github.com/daggerok/fundamentals/tree/master/docs"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`flex-shrink-0 text-xs px-2 py-1 rounded transition-colors ${
-                dark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title={t('docs', lang)}
-            >
-              📄 {t('docs', lang)}
-            </a>
-            {(company || pd) && (
-              <Fragment>
-                <Pill value={mode} options={['Y', 'Q']} onChange={(k) => setMode(k as Mode)} dark={dark} />
-                <Pill
-                  value={view}
-                  options={[
-                    { k: 'T', l: '⊞' },
-                    { k: 'C', l: '◔' },
-                  ]}
-                  onChange={(k) => setView(k as View)}
-                  dark={dark}
-                />
-              </Fragment>
-            )}
+              <div className={`h-2.5 w-2.5 rounded-full ${wwwOk ? dotOn : 'bg-red-500'}`} />
+              <div
+                className={`h-2.5 w-2.5 rounded-full ${
+                  dataOk ? dotOn : tkL || loading ? 'bg-yellow-400 animate-pulse' : dotOff
+                }`}
+              />
+            </div>
           </div>
+
           <div className={`console-wrap ${showDebug && logs.length > 0 ? 'open' : ''}`}>
             <div className="console-inner">
               <div className="pb-2 -mt-1">
