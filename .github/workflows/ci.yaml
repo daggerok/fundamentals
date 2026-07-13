@@ -35,4 +35,10 @@ jobs:
         run: bun run build-github-pages
 
       - name: List dist (debug)
-        run: ls -la dist/ || echo "dist not created"
+        run: |
+          echo "=== dist contents ==="
+          ls -la dist/ || echo "dist not created"
+          echo "=== dist/data ==="
+          ls -la dist/data/ || echo "no data"
+          echo "=== build success check ==="
+          ls dist/index.html dist/fundamentals.*.js 2>/dev/null && echo "Build artifacts OK" || echo "MISSING ARTIFACTS"
