@@ -1280,6 +1280,11 @@ function App() {
                     {wwwBase && (
                       <div className={`text-[10px] break-all ${mt}`}>www: {wwwBase}</div>
                     )}
+                    {company && (
+                      <div className={`text-[10px] break-all pt-1 ${mt}`}>
+                        {company.ticker} · {company.title} · CIK {company.cik}
+                      </div>
+                    )}
                   </div>
                   <div className="grid gap-2">
                     <pre
@@ -1428,13 +1433,6 @@ bun run serve:app`}</pre>
 
         {company && !loading && pd && (
           <div className="space-y-6 animate-fade-in">
-            <div className="flex items-baseline justify-between gap-4 flex-wrap mb-1">
-              <div className={`text-3xl font-bold tracking-tight ${t1}`}>{company.ticker}</div>
-              <div className={`text-sm text-right ${t2}`}>
-                {company.title} · CIK {company.cik}
-              </div>
-            </div>
-
             {SEC.map((section) => {
               const { metricSeries, computedSeries } = pd;
               const allM = [
