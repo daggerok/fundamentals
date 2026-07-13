@@ -8,9 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Устанавливаем bun прямо здесь, это быстро и надежно
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      # Кеширование зависимостей bun
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
@@ -22,9 +24,12 @@ jobs:
       - run: bun run build
       - run: bun run build-github-pages
   npm-check-updates:
+    environment:
+      name: ci
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -36,6 +41,6 @@ jobs:
             ${{ runner.os }}-bun-
       - run: bunx npm-check-updates -u
       - run: bun install
-      - run: bun run build
-      - run: bun run clean
-      - run: bun run build-github-pages
+      - run: npm run build
+      - run: npm run clean
+      - run: npm run build-github-pages
