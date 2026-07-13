@@ -1,19 +1,14 @@
-# Fundamentals — SEC static cache (options-desk pattern)
+# Fundamentals — SEC static cache (options-desk coverage-first)
 # uv run scripts/fetch_data.py → data/company_tickers.json + data/{TICKER}.json + index.json
 name: Update SEC data
 
 on:
   schedule:
-    - cron: "0 0-7 * * 0-6"
-    - cron: "1 8-15 * * 0-6"
-    - cron: "2 16-23 * * 0-6"
-    - cron: "5 0-11 * * 0-6"
-    - cron: "8 12-23 * * 0-6"
-    - cron: "13 0-23 * * 0-6"
-    - cron: "21 0-23 * * 0-6"
-    - cron: "34 0-23 * * 0-6"
-    - cron: "45 0-23 * * 0-6"
-    - cron: "55 0-23 * * 0-6"
+    # A few times on weekdays — each run covers MAX_FETCHES new/stale tickers
+    - cron: "0 3 * * 1-5"
+    - cron: "0 9 * * 1-5"
+    - cron: "0 15 * * 1-5"
+    - cron: "0 21 * * 1-5"
   workflow_dispatch: {}
 
 permissions:
@@ -23,14 +18,16 @@ jobs:
   update:
     runs-on: ubuntu-latest
     env:
-      MAX_RETRIES: "1"
-      MAX_FETCHES: "40"
-      SKIP_FRESH_HOURS: "1"
-      REQUEST_SLEEP_MINUTES: "1"
       PYTHONUNBUFFERED: "1"
+      MAX_FETCHES: "40"
+      MAX_RETRIES: "3"
+      REQUEST_SLEEP: "0.25"
+      SKIP_FRESH_HOURS: "24"
+      # UNIVERSE_SIZE: "0"   # 0 = all company_tickers; set e.g. 500 to limit
+      # TICKERS: "AAPL MSFT" # optional explicit list
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v6
@@ -38,7 +35,7 @@ jobs:
           enable-cache: true
           python-version: "3.13"
 
-      - name: Prefetch SEC static cache (tickers + companyfacts)
+      - name: Prefetch SEC static cache (coverage-first)
         run: uv run python scripts/fetch_data.py
 
       - name: Commit refreshed data

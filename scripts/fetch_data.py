@@ -1,18 +1,32 @@
 #!/usr/bin/env python3
 # =============================================================================
-# Fundamentals — build-time SEC static cache (options-desk pattern)
+# Fundamentals — build-time SEC static cache (options-desk coverage-first)
 # -----------------------------------------------------------------------------
-# Produces same-origin files for GitHub Pages (copied to dist/data via ncp):
+# Same-origin files for GitHub Pages (copied to dist/data via ncp):
 #   data/company_tickers.json     SEC ticker map (search)
 #   data/{TICKER}.json            companyfacts for CACHE mode
 #   data/index.json               manifest: files, count, generated, names
 #
 # RUN:
 #   uv run python scripts/fetch_data.py
-#   TICKERS="AAPL MSFT NVDA" MAX_FETCHES=20 uv run python scripts/fetch_data.py
+#   MAX_FETCHES=100 uv run python scripts/fetch_data.py
+#   TICKERS="AAPL MSFT" uv run python scripts/fetch_data.py   # explicit only
+#   UNIVERSE_SIZE=500 SKIP_FRESH_HOURS=0 MAX_FETCHES=50 uv run python scripts/fetch_data.py
 #
-# ENV: TICKERS, MAX_FETCHES (40), REQUEST_SLEEP_MINUTES (0.2), SKIP_FRESH_HOURS (24),
-#      SEC_USER_AGENT ("Name email@example.com")
+# QUEUE (when TICKERS not set) — options-desk style:
+#   1) MISSING symbols from company_tickers (coverage-first)
+#   2) then STALE cached files (oldest first refresh)
+#   Fresh files are skipped. MAX_FETCHES caps successful NEW writes per run.
+#
+# ENV:
+#   TICKERS / TICKER       optional explicit list (space/comma)
+#   MAX_FETCHES            max successful companyfacts writes this run (default 40)
+#   UNIVERSE_SIZE          max symbols from company_tickers to consider (default 0 = all)
+#   REQUEST_SLEEP          seconds between SEC calls (default 0.25)
+#   SKIP_FRESH_HOURS       skip re-fetch if file younger than N hours (default 24)
+#   MAX_RETRIES            HTTP retries per request (default 3)
+#   SEC_USER_AGENT         "Name email@example.com"
+#   MIN_FACTS_BYTES        reject tiny/useless payloads (default 5000)
 # =============================================================================
 
 from __future__ import annotations
@@ -34,12 +48,20 @@ UA = os.environ.get("SEC_USER_AGENT", DEFAULT_UA).strip() or DEFAULT_UA
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 
-REQUEST_SLEEP_MINUTES = float(os.environ.get("REQUEST_SLEEP_MINUTES", "1"))
-SKIP_FRESH_HOURS = float(os.environ.get("SKIP_FRESH_HOURS", "1"))
 MAX_FETCHES = int(os.environ.get("MAX_FETCHES", "40"))
-MAX_RETRIES = int(os.environ.get("MAX_FETCHES", "3"))
+MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "3"))
+REQUEST_SLEEP = float(os.environ.get("REQUEST_SLEEP", os.environ.get("REQUEST_SLEEP_MINUTES", "0.25")))
+# If someone still passes REQUEST_SLEEP_MINUTES=1 meaning seconds, keep seconds.
+# If they pass a large value thinking minutes, clamp is not applied — document as seconds.
+SKIP_FRESH_HOURS = float(os.environ.get("SKIP_FRESH_HOURS", "24"))
+UNIVERSE_SIZE = int(os.environ.get("UNIVERSE_SIZE", "0"))  # 0 = entire company_tickers map
+MIN_FACTS_BYTES = int(os.environ.get("MIN_FACTS_BYTES", "5000"))
+FORCE_TICKERS_REFRESH = os.environ.get("FORCE_TICKERS_REFRESH", "").lower() in (
+    "1", "true", "yes", "on",
+)
 
-DEFAULT_TICKERS = [
+# Priority seed: fetched first among MISSING (not a hard queue limit)
+PRIORITY_TICKERS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG", "TSLA", "BRK-B",
     "JPM", "V", "UNH", "XOM", "JNJ", "WMT", "MA", "PG", "HD", "CVX", "MRK",
     "ABBV", "PEP", "KO", "AVGO", "COST", "LLY", "ADBE", "CRM", "CSCO", "ACN",
@@ -91,6 +113,8 @@ def _get_json(session, url: str) -> dict:
                 raise FileNotFoundError(f"404 {url}")
             r.raise_for_status()
             return r.json()
+        except FileNotFoundError:
+            raise
         except Exception as e:
             last = e
             _log(f"WARN attempt {attempt}/{MAX_RETRIES}: {e}")
@@ -101,7 +125,11 @@ def _get_json(session, url: str) -> dict:
 
 
 def load_company_tickers(session) -> dict:
-    if TICKERS_PATH.exists() and TICKERS_PATH.stat().st_size > 10_000:
+    if (
+        not FORCE_TICKERS_REFRESH
+        and TICKERS_PATH.exists()
+        and TICKERS_PATH.stat().st_size > 10_000
+    ):
         try:
             data = json.loads(TICKERS_PATH.read_text(encoding="utf-8"))
             if isinstance(data, dict) and len(data) >= 50:
@@ -119,6 +147,7 @@ def load_company_tickers(session) -> dict:
 
 
 def ticker_index(company_tickers: dict) -> dict[str, dict]:
+    """TICKER -> {cik, title}. SEC order is roughly larger/more active first."""
     out: dict[str, dict] = {}
     for row in company_tickers.values():
         if not isinstance(row, dict):
@@ -128,6 +157,9 @@ def ticker_index(company_tickers: dict) -> dict[str, dict]:
             continue
         cik = str(row.get("cik_str") or row.get("cik") or "").strip()
         if not cik:
+            continue
+        # first wins (keep SEC order / first occurrence)
+        if t in out:
             continue
         out[t] = {
             "cik": cik.zfill(10),
@@ -144,11 +176,65 @@ def parse_tickers_env() -> list[str] | None:
     return [s.upper().strip() for s in raw.split() if s.strip()]
 
 
+def cached_symbols() -> set[str]:
+    return {
+        p.stem
+        for p in DATA_DIR.glob("*.json")
+        if p.name not in ("index.json", "company_tickers.json")
+    }
+
+
 def is_fresh(path: Path) -> bool:
-    if not path.exists() or path.stat().st_size < 100:
+    if not path.exists() or path.stat().st_size < MIN_FACTS_BYTES:
         return False
     age_h = (_now().timestamp() - path.stat().st_mtime) / 3600.0
     return age_h < SKIP_FRESH_HOURS
+
+
+def file_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def build_work_queue(tmap: dict[str, dict]) -> tuple[list[str], int, int, int]:
+    """
+    Coverage-first queue (options-desk style):
+      missing (priority seed first, then rest of universe) + stale (oldest first).
+    Returns (queue, n_missing, n_stale, n_fresh).
+    """
+    existing = cached_symbols()
+    universe = list(tmap.keys())
+    if UNIVERSE_SIZE > 0:
+        universe = universe[:UNIVERSE_SIZE]
+
+    missing = [s for s in universe if s not in existing]
+    # Priority seed first among missing
+    prio = [s for s in PRIORITY_TICKERS if s in set(missing)]
+    rest_missing = [s for s in missing if s not in set(prio)]
+    missing_ordered = prio + rest_missing
+
+    stale: list[tuple[float, str]] = []
+    fresh = 0
+    for s in existing:
+        path = DATA_DIR / f"{s}.json"
+        if is_fresh(path):
+            fresh += 1
+        else:
+            stale.append((file_mtime(path), s))
+    stale.sort(key=lambda x: x[0])  # oldest first
+    stale_syms = [s for _, s in stale]
+
+    queue = missing_ordered + stale_syms
+    _log(
+        f"queue plan: universe={len(universe)} missing={len(missing_ordered)} "
+        f"(priority={len(prio)}) stale={len(stale_syms)} fresh_skipped={fresh} "
+        f"total_queued={len(queue)} MAX_FETCHES={MAX_FETCHES}"
+    )
+    if not missing_ordered and stale_syms:
+        _log("coverage complete for current universe — refreshing oldest caches")
+    return queue, len(missing_ordered), len(stale_syms), fresh
 
 
 def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
@@ -164,7 +250,17 @@ def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
         "entityName": raw.get("entityName"),
         "facts": facts,
     }
-    path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    text = json.dumps(payload, separators=(",", ":"))
+    if len(text.encode("utf-8")) < MIN_FACTS_BYTES:
+        raise ValueError(
+            f"payload too small ({len(text)} B < MIN_FACTS_BYTES={MIN_FACTS_BYTES}); "
+            "likely empty/non-operating entity"
+        )
+    # Prefer files that actually have us-gaap (fundamentals usable)
+    fobj = payload.get("facts") or {}
+    if not isinstance(fobj, dict) or "us-gaap" not in fobj:
+        raise ValueError("no us-gaap in companyfacts.facts")
+    path.write_text(text, encoding="utf-8")
     return path
 
 
@@ -202,6 +298,17 @@ def rebuild_index(names: dict[str, str]) -> None:
     _log(f"index: wrote {INDEX_PATH} ({index['count']} ticker caches)")
 
 
+def resolve_meta(tmap: dict[str, dict], sym: str) -> tuple[str, dict] | None:
+    meta = tmap.get(sym)
+    if meta:
+        return sym, meta
+    alt = sym.replace(".", "-") if "." in sym else sym.replace("-", ".")
+    meta = tmap.get(alt)
+    if meta:
+        return alt, meta
+    return None
+
+
 def main() -> int:
     try:
         import requests  # noqa: F401
@@ -218,47 +325,44 @@ def main() -> int:
     override = parse_tickers_env()
     if override:
         queue = override
-        _log(f"queue: {len(queue)} from TICKERS env")
+        n_missing = n_stale = n_fresh = 0
+        _log(f"queue: {len(queue)} from TICKERS env (explicit; ignores coverage queue)")
     else:
-        existing = sorted(
-            p.stem for p in DATA_DIR.glob("*.json")
-            if p.name not in ("index.json", "company_tickers.json")
-        )
-        queue, seen = [], set()
-        for s in DEFAULT_TICKERS + existing:
-            if s not in seen:
-                queue.append(s)
-                seen.add(s)
-        _log(f"queue: {len(queue)} (defaults + existing caches)")
+        queue, n_missing, n_stale, n_fresh = build_work_queue(tmap)
 
     names: dict[str, str] = {}
     fetched = skipped = failed = 0
 
     for i, sym in enumerate(queue, start=1):
         if fetched >= MAX_FETCHES:
-            _log(f"STOP: MAX_FETCHES={MAX_FETCHES}")
+            _log(
+                f"STOP: reached MAX_FETCHES={MAX_FETCHES} successful writes "
+                f"(queue remaining={len(queue) - i + 1}; re-run to continue coverage)"
+            )
             break
-        meta = tmap.get(sym)
-        if not meta:
-            alt = sym.replace(".", "-") if "." in sym else sym.replace("-", ".")
-            meta = tmap.get(alt)
-            if meta:
-                sym = alt
-        if not meta:
+
+        resolved = resolve_meta(tmap, sym)
+        if not resolved:
             _log(f"SKIP [{i}/{len(queue)}] {sym}: not in company_tickers")
             failed += 1
             continue
+        sym, meta = resolved
         path = DATA_DIR / f"{sym}.json"
+
+        # Explicit TICKERS still honor freshness unless SKIP_FRESH_HOURS=0
         if is_fresh(path):
             _log(f"FRESH [{i}/{len(queue)}] {sym}: skip (<{SKIP_FRESH_HOURS}h)")
             skipped += 1
             names[sym] = meta.get("title") or sym
             continue
+
         cik = meta["cik"]
         url = SEC_FACTS_URL.format(cik=cik)
-        _log(f"FETCH [{i}/{len(queue)}] {sym} CIK{cik}")
+        phase = "coverage" if not path.exists() else "refresh"
+        _log(f"FETCH [{i}/{len(queue)}] {phase} {sym} CIK{cik} (writes={fetched}/{MAX_FETCHES})")
         try:
-            time.sleep(REQUEST_SLEEP_MINUTES)
+            if REQUEST_SLEEP > 0:
+                time.sleep(REQUEST_SLEEP)
             raw = _get_json(session, url)
             out = write_ticker_cache(sym, meta, raw)
             fetched += 1
@@ -271,8 +375,27 @@ def main() -> int:
             _log(f"ERROR [{i}/{len(queue)}] {sym}: {e}")
             failed += 1
 
+    # Keep names for fresh-skipped files too
+    for s in cached_symbols():
+        if s not in names:
+            try:
+                doc = json.loads((DATA_DIR / f"{s}.json").read_text(encoding="utf-8"))
+                names[s] = doc.get("title") or s
+            except Exception:
+                names[s] = s
+
     rebuild_index(names)
-    _log(f"DONE: fetched={fetched} skipped_fresh={skipped} failed={failed}")
+    _log(
+        f"DONE: fetched={fetched} skipped_fresh={skipped} failed={failed} "
+        f"cached_total={len(cached_symbols())} map={len(tmap)}"
+    )
+    if not override and n_missing:
+        still_missing = n_missing - fetched  # rough
+        if still_missing > 0 and fetched >= MAX_FETCHES:
+            _log(
+                f"HINT: coverage incomplete — re-run with MAX_FETCHES={MAX_FETCHES} "
+                f"(or higher) to continue downloading missing tickers"
+            )
     return 0
 
 
