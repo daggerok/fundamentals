@@ -36,10 +36,15 @@ body {
   border-radius: 3px;
 }
 
-/* Fundamentals specific styles (adapted from old app) */
+/* Cards (runtime-style rounded-xl + shadow) */
 .fund-card {
   background: var(--od-card);
   border: 1px solid var(--od-border);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+}
+
+.dark .fund-card {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.35), 0 4px 6px -4px rgb(0 0 0 / 0.25);
 }
 
 .fund-table th {
@@ -47,14 +52,21 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #64748b;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .dark .fund-table th {
   color: #94a3b8;
 }
 
+.fund-table td {
+  white-space: nowrap;
+}
+
 .fund-metric {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
 }
 
 .animate-fade-in {
@@ -62,12 +74,60 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.scale-slider {
+/* Range slider — match fundamentals-runtime */
+input[type='range'].scale-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
   accent-color: #10b981;
+}
+
+input[type='range'].scale-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  cursor: pointer;
+  background: #059669;
+}
+
+input[type='range'].scale-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  background: #059669;
+}
+
+.dark input[type='range'].scale-slider {
+  background: #334155;
+}
+
+.dark input[type='range'].scale-slider::-webkit-slider-thumb {
+  background: #34d399;
+}
+
+.dark input[type='range'].scale-slider::-moz-range-thumb {
+  background: #34d399;
+}
+
+html:not(.dark) input[type='range'].scale-slider {
+  background: #cbd5e1;
 }
 
 /* Console / logs */
