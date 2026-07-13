@@ -1,16 +1,14 @@
-# =============================================================================
-# Fundamentals — SEC company_tickers static cache (GitHub Action)
-# -----------------------------------------------------------------------------
-# INFRASTRUCTURE. Mirrors options-desk update-data workflow (uv + Python).
-#   1. uv run scripts/fetch_data.py → data/company_tickers.json + data/index.json
-#   2. Commit refreshed data/ back to the repo for GitHub Pages.
-# =============================================================================
+# Fundamentals — SEC static cache (options-desk coverage-first)
+# uv run scripts/fetch_data.py → data/company_tickers.json + data/{TICKER}.json + index.json
 name: Update SEC data
 
 on:
   schedule:
-    - cron: "0 3 * * 1-5"   # weekdays at 03:00 UTC
+    # A few times on weekdays — each run covers MAX_FETCHES new/stale tickers
+    - cron: "0 3 * * 1-5"
+    - cron: "0 9 * * 1-5"
     - cron: "0 15 * * 1-5"
+    - cron: "0 21 * * 1-5"
   workflow_dispatch: {}
 
 permissions:
@@ -21,6 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
+      MAX_FETCHES: "40"
+      MAX_RETRIES: "3"
+      REQUEST_SLEEP: "0.25"
+      SKIP_FRESH_HOURS: "24"
+      # UNIVERSE_SIZE: "0"   # 0 = all company_tickers; set e.g. 500 to limit
+      # TICKERS: "AAPL MSFT" # optional explicit list
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +35,7 @@ jobs:
           enable-cache: true
           python-version: "3.13"
 
-      - name: Fetch company_tickers (SEC EDGAR)
+      - name: Prefetch SEC static cache (coverage-first)
         run: uv run python scripts/fetch_data.py
 
       - name: Commit refreshed data
@@ -42,6 +46,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No data changes — nothing to commit."
           else
-            git commit -m "chore(data): refresh company_tickers.json (SEC EDGAR)"
+            git commit -m "chore(data): refresh SEC static cache [skip ci]"
             git push || echo "Push failed (may be up-to-date or race condition)"
           fi

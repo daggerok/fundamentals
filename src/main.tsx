@@ -14,6 +14,8 @@ import { createRoot } from 'react-dom/client';
 type Language = 'en' | 'ru';
 type Mode = 'Y' | 'Q';
 type View = 'T' | 'C';
+/** CACHE = same-origin /data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
+type DataSource = 'cache' | 'live';
 
 const LS_P = 'sec-dash-prefs';
 const LS_C = 'sec-dash-cache';
@@ -54,6 +56,12 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.lang': 'Language',
     'settings.view': 'View',
     'settings.mode': 'Period',
+    'settings.source': 'Data source',
+    'source.cache': 'CACHE',
+    'source.live': 'LIVE',
+    'source.cache.hint': 'Same-origin /data/{TICKER}.json (pre-fetched for GitHub Pages)',
+    'source.live.hint': 'Live SEC EDGAR via local proxy',
+    'tip.source': 'CACHE (static) / LIVE (proxy)',
     'settings.scale': 'Text scale',
     'settings.console': 'Debug console',
     'settings.proxyWww': 'www.sec.gov proxy',
@@ -144,6 +152,12 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.lang': 'Язык',
     'settings.view': 'Вид',
     'settings.mode': 'Период',
+    'settings.source': 'Источник данных',
+    'source.cache': 'CACHE',
+    'source.live': 'LIVE',
+    'source.cache.hint': 'Same-origin /data/{TICKER}.json (префетч для GitHub Pages)',
+    'source.live.hint': 'Live SEC EDGAR через локальный прокси',
+    'tip.source': 'CACHE (статика) / LIVE (прокси)',
     'settings.scale': 'Масштаб текста',
     'settings.console': 'Консоль отладки',
     'settings.proxyWww': 'Прокси www.sec.gov',
@@ -393,6 +407,16 @@ const TC: Record<
   },
 };
 
+function defaultDataSource(): DataSource {
+  try {
+    const h = window.location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h.endsWith('.local')) {
+      return 'live';
+    }
+  } catch {}
+  return 'cache'; // GitHub Pages / hosted: prefer static /data/*.json
+}
+
 const DEFAULT_WWW_PROXY = 'http://localhost:8011/proxy';
 const DEFAULT_DATA_PROXY = 'http://localhost:8012/proxy';
 const LS_WWW_PROXY = 'sec-proxy-www';
@@ -467,6 +491,49 @@ function normalizeFacts(raw: any): any {
   if (raw['us-gaap']) return raw;
   if (raw.facts) return raw.facts;
   return raw;
+}
+
+/** options-desk-style static file: /data/{TICKER}.json → { symbol, cik, title, facts } */
+async function loadStaticFacts(sym: string): Promise<{
+  facts: any;
+  company: { ticker: string; title: string; cik: string };
+} | null> {
+  const url = `/data/${encodeURIComponent(sym)}.json`;
+  try {
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) return null;
+    const ct = r.headers.get('content-type') || '';
+    // SPA hosts sometimes return index.html for missing files
+    if (ct.includes('text/html')) return null;
+    const doc = await r.json();
+    const facts = normalizeFacts(doc.facts || doc);
+    if (!facts?.['us-gaap']) return null;
+    const ticker = String(doc.ticker || doc.symbol || sym).toUpperCase();
+    const cik = String(doc.cik || '').padStart(10, '0');
+    const title = doc.title || doc.entityName || ticker;
+    return { facts, company: { ticker, title, cik } };
+  } catch {
+    return null;
+  }
+}
+
+async function loadStaticManifest(): Promise<{
+  files: Record<string, string>;
+  names: Record<string, string>;
+  count: number;
+} | null> {
+  try {
+    const r = await fetch('/data/index.json', { headers: { Accept: 'application/json' } });
+    if (!r.ok) return null;
+    const doc = await r.json();
+    return {
+      files: doc.files || {},
+      names: doc.names || {},
+      count: doc.count || 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function exM(facts: any, keys: string[], mode: Mode) {
@@ -807,6 +874,9 @@ function App() {
   const [wwwBase, setWwwBase] = useState<string | null>(null);
   const [dataBase, setDataBase] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>(prefs.mode || 'Y');
+  const [dataSource, setDataSource] = useState<DataSource>(
+    () => (prefs.dataSource as DataSource) || defaultDataSource(),
+  );
   const [view, setView] = useState<View>(prefs.view || 'C');
   const [dark, setDark] = useState(prefs.dark !== false);
   const [factsCache, setFactsCache] = useState<any>(cached?.facts || null);
@@ -842,8 +912,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    sp({ ticker, mode, view, dark, showDebug, scaleSlider });
-  }, [ticker, mode, view, dark, showDebug, scaleSlider]);
+    sp({ ticker, mode, view, dark, showDebug, scaleSlider, dataSource });
+  }, [ticker, mode, view, dark, showDebug, scaleSlider, dataSource]);
 
   // Keep last loaded companyfacts in localStorage across reloads/close
   useEffect(() => {
@@ -853,11 +923,11 @@ function App() {
   useEffect(() => {
     const onLeave = () => {
       if (company && factsCache) sc({ facts: factsCache, company });
-      sp({ ticker, mode, view, dark, showDebug, scaleSlider });
+      sp({ ticker, mode, view, dark, showDebug, scaleSlider, dataSource });
     };
     window.addEventListener('beforeunload', onLeave);
     return () => window.removeEventListener('beforeunload', onLeave);
-  }, [company, factsCache, ticker, mode, view, dark, showDebug, scaleSlider]);
+  }, [company, factsCache, ticker, mode, view, dark, showDebug, scaleSlider, dataSource]);
 
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
@@ -1007,9 +1077,47 @@ function App() {
           cik_str: Number(cached.company.cik),
         };
       }
-      if (!co) throw new Error(`"${sym}" not found`);
+      if (!co) {
+        // CACHE may still have data/{TICKER}.json even if ticker map is stubby
+        if (dataSource === 'cache') {
+          const cachedFile = await loadStaticFacts(sym);
+          if (cachedFile) {
+            setDataOk(true);
+            setWwwOk(true);
+            setFactsCache(cachedFile.facts);
+            setCompany(cachedFile.company);
+            setPd(proc(cachedFile.facts, mode));
+            sc({ facts: cachedFile.facts, company: cachedFile.company });
+            log(`${sym} → CIK ${cachedFile.company.cik}`);
+            log(`✅ CACHE /data/${sym}.json`);
+            log('✅ Done');
+            return;
+          }
+        }
+        throw new Error(`"${sym}" not found`);
+      }
       const cik = String(co.cik_str ?? co.cik).padStart(10, '0');
       log(`${sym} → CIK ${cik}`);
+
+      // --- CACHE mode: same-origin /data/{TICKER}.json (options-desk pattern) ---
+      if (dataSource === 'cache') {
+        const cachedFile = await loadStaticFacts(sym);
+        if (cachedFile) {
+          setDataOk(true);
+          setWwwOk(true);
+          setFactsCache(cachedFile.facts);
+          setCompany(cachedFile.company);
+          setPd(proc(cachedFile.facts, mode));
+          sc({ facts: cachedFile.facts, company: cachedFile.company });
+          log(`✅ CACHE /data/${sym}.json`);
+          log('✅ Done');
+          return;
+        }
+        // fall through to LIVE if static miss (and log)
+        log(`CACHE miss /data/${sym}.json — trying LIVE proxy`);
+      }
+
+      // --- LIVE mode: SEC via proxy ---
       const dataCands = [
         ...new Set(
           [dataProxyUrl, dataBase || '', ...DATA_CANDIDATES, ...UNIFIED].filter(
@@ -1403,6 +1511,22 @@ function App() {
                       title={t('tip.mode', lang)}
                     />
                   </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`} title={t(`source.${dataSource}.hint`, lang)}>
+                      {t('settings.source', lang)}
+                    </span>
+                    <Pill
+                      value={dataSource}
+                      options={[
+                        { k: 'cache', l: 'CACHE' },
+                        { k: 'live', l: 'LIVE' },
+                      ]}
+                      onChange={(k) => setDataSource(k as DataSource)}
+                      dark={dark}
+                      title={t('tip.source', lang)}
+                    />
+                  </div>
+                  <div className={`text-[10px] ${mt}`}>{t(`source.${dataSource}.hint`, lang)}</div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-xs ${t2}`}>{t('settings.scale', lang)}</span>
@@ -1592,18 +1716,31 @@ function App() {
                       );
                     }
 
-                    const dataUrl = dataBase || dataProxyUrl || DEFAULT_DATA_PROXY;
-                    const wwwUrl = wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY;
                     push(
-                      <span key="data" className={dataOk ? 'text-emerald-500' : 'text-red-500'}>
-                        {dataOk ? '✅' : '❌'} data proxy: {dataUrl}
+                      <span key="src" className={t1}>
+                        {dataSource === 'cache' ? 'CACHE' : 'LIVE'}
                       </span>,
                     );
-                    push(
-                      <span key="www" className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>
-                        {wwwOk ? '✅' : '❌'} www proxy: {wwwUrl}
-                      </span>,
-                    );
+                    if (dataSource === 'live') {
+                      const dataUrl = dataBase || dataProxyUrl || DEFAULT_DATA_PROXY;
+                      const wwwUrl = wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY;
+                      push(
+                        <span key="data" className={dataOk ? 'text-emerald-500' : 'text-red-500'}>
+                          {dataOk ? '✅' : '❌'} data proxy: {dataUrl}
+                        </span>,
+                      );
+                      push(
+                        <span key="www" className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>
+                          {wwwOk ? '✅' : '❌'} www proxy: {wwwUrl}
+                        </span>,
+                      );
+                    } else {
+                      push(
+                        <span key="cache" className={dataOk ? 'text-emerald-500' : mt}>
+                          {dataOk ? '✅' : '…'} /data/{'{TICKER}'}.json
+                        </span>,
+                      );
+                    }
 
                     const last = logs.length ? logs[logs.length - 1] : '';
                     const done =

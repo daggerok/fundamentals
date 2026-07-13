@@ -186,3 +186,31 @@ bun run data:fetch
 
 Writes `data/company_tickers.json` + `data/index.json`.  
 GitHub Action **Update SEC data** runs this on a schedule via `astral-sh/setup-uv`.
+
+---
+
+## Static CACHE (options-desk pattern)
+
+Pre-fetch SEC companyfacts into `data/{TICKER}.json`, then `postbuild` copies `data/` → `dist/data/` for GitHub Pages.
+
+```bash
+# coverage-first: download MISSING tickers from company_tickers.json (then refresh stale)
+MAX_FETCHES=50 uv run python scripts/fetch_data.py
+
+# or only specific symbols
+TICKERS="AAPL MSFT NVDA" uv run python scripts/fetch_data.py
+
+# force re-fetch even if "fresh"
+SKIP_FRESH_HOURS=0 MAX_FETCHES=10 TICKERS="AAPL" uv run python scripts/fetch_data.py
+
+bun run build   # ncp → dist/data/
+```
+
+`MAX_FETCHES` only caps **successful writes this run**. Re-run to continue covering the ~9k SEC ticker map (missing first). Fresh files (`SKIP_FRESH_HOURS`, default 24h) are skipped automatically.
+
+
+In the app **Settings → Data source**:
+- **CACHE** (default on GitHub Pages): load `/data/{TICKER}.json` (no proxy)
+- **LIVE** (default on localhost): SEC via local proxy
+
+GitHub Action **Update SEC data** grows the cache on a schedule (`MAX_FETCHES` per run).

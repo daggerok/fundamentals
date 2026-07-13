@@ -1,9 +1,28 @@
 {
   "files": {
-    "company_tickers.json": "stub"
+    "AAPL": "2026-07-13T23:26:38.218776+00:00",
+    "AVGO": "2026-07-13T23:27:46.064706+00:00",
+    "GOOG": "2026-07-13T23:27:46.589976+00:00",
+    "GOOGL": "2026-07-13T23:27:47.103965+00:00",
+    "LLY": "2026-07-13T23:27:48.711269+00:00",
+    "META": "2026-07-13T23:27:47.623028+00:00",
+    "MSFT": "2026-07-13T23:26:38.786079+00:00",
+    "MU": "2026-07-13T23:27:48.186552+00:00",
+    "NVDA": "2026-07-13T23:26:39.350486+00:00",
+    "company_tickers.json": "2026-07-13T23:27:48.915363+00:00"
   },
-  "count": 8,
-  "generated": "stub-for-dev-full-list-via-proxy-or-update-data-workflow",
-  "names": {},
+  "count": 9,
+  "generated": "2026-07-13T23:27:48.915829+00:00",
+  "names": {
+    "AAPL": "Apple Inc.",
+    "AVGO": "Broadcom Inc.",
+    "GOOG": "Alphabet Inc.",
+    "GOOGL": "Alphabet Inc.",
+    "LLY": "ELI LILLY & Co",
+    "META": "Meta Platforms, Inc.",
+    "MSFT": "MICROSOFT CORP",
+    "MU": "MICRON TECHNOLOGY INC",
+    "NVDA": "NVIDIA CORP"
+  },
   "no_options": {}
 }
