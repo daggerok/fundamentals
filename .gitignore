@@ -11,6 +11,7 @@ dist/
 .vscode/
 *.tmp
 *.bak
+SCRATCHPAD.md
 # pre-fetched data for GitHub Pages (commit these)
 !data/company_tickers.json
 !data/index.json

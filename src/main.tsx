@@ -1,11 +1,11 @@
 // main.tsx
 // SEC EDGAR Financial Fundamentals Dashboard
 // Modern React + TypeScript + Tailwind v4 + Parcel
-// Ported following options-desk architecture
+// Proxy solution aligned with fundamentals-runtime (local-cors-proxy dual ports)
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Moon, Sun, RefreshCw } from 'lucide-react';
+import { Moon, Sun, RefreshCw, Settings2 } from 'lucide-react';
 
 type Language = 'en' | 'ru';
 
@@ -20,8 +20,12 @@ const translations: Record<Language, Record<string, string>> = {
     'view.table': 'Table',
     'view.charts': 'Charts',
     'loading': 'Loading…',
-    'error.proxy': 'Start proxy: bun ./scripts/sec-proxy.ts',
+    'error.proxy': 'Start proxies (fundamentals-runtime style):\nbunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011\nbunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012\n\nOr one Bun proxy: bun ./scripts/sec-proxy.ts',
     'no.data': 'Enter a ticker (AAPL, MSFT, NVDA...)',
+    'proxy.help': 'Proxy setup',
+    'proxy.www': 'www.sec.gov',
+    'proxy.data': 'data.sec.gov',
+    'settings.proxy': 'Proxy',
   },
   ru: {
     'app.brand': 'SEC Fundamentals',
@@ -33,8 +37,12 @@ const translations: Record<Language, Record<string, string>> = {
     'view.table': 'Таблица',
     'view.charts': 'Графики',
     'loading': 'Загрузка…',
-    'error.proxy': 'Запустите прокси: bun ./scripts/sec-proxy.ts',
+    'error.proxy': 'Запустите прокси (как в fundamentals-runtime):\nbunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011\nbunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012\n\nИли один Bun-прокси: bun ./scripts/sec-proxy.ts',
     'no.data': 'Введите тикер (AAPL, MSFT, NVDA...)',
+    'proxy.help': 'Настройка прокси',
+    'proxy.www': 'www.sec.gov',
+    'proxy.data': 'data.sec.gov',
+    'settings.proxy': 'Прокси',
   },
 };
 
@@ -42,19 +50,86 @@ function t(key: string, lang: Language): string {
   return translations[lang]?.[key] || translations.en[key] || key;
 }
 
+// ---------------------------------------------------------------------------
+// Proxy discovery — same shape as fundamentals-runtime
+// local-cors-proxy exposes: http://localhost:{port}/proxy/...
+// sec-proxy.ts also accepts /proxy/... and bare /api /files paths.
+// ---------------------------------------------------------------------------
+const WWW_CANDIDATES = [8011, 8010, 8080, 3000, 8012].map(
+  (p) => `http://localhost:${p}/proxy`,
+);
+const DATA_CANDIDATES = [8012, 8010, 8080, 3000, 8011].map(
+  (p) => `http://localhost:${p}/proxy`,
+);
+// Also try unified Bun proxy without /proxy prefix (MODE=both on 8012)
+const UNIFIED_CANDIDATES = [
+  'http://localhost:8012',
+  'http://localhost:8010',
+  'http://localhost:8080',
+];
+
+const LS_WWW = 'sec-proxy-www';
+const LS_DATA = 'sec-proxy-data';
+const LS_UNIFIED = 'sec-proxy'; // legacy single-base key
+
+async function probeBase(
+  candidates: string[],
+  path: string,
+): Promise<{ base: string; res: Response }> {
+  const errors: string[] = [];
+  for (const base of candidates) {
+    try {
+      const r = await fetch(base + path, {
+        headers: { Accept: 'application/json' },
+      });
+      if (r.ok) return { base, res: r };
+      errors.push(`${base}${path}→${r.status}`);
+    } catch (x: any) {
+      errors.push(`${base}${path}→${x?.message || x}`);
+    }
+  }
+  throw new Error('Proxy not reachable:\n' + errors.join('\n'));
+}
+
 const CON: Record<string, string[]> = {
-  revenue: ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues', 'SalesRevenueNet'],
-  costOfRevenue: ['CostOfGoodsAndServicesSold', 'CostOfRevenue'],
+  revenue: [
+    'RevenueFromContractWithCustomerExcludingAssessedTax',
+    'Revenues',
+    'SalesRevenueNet',
+    'SalesRevenueGoodsNet',
+    'RevenueFromContractWithCustomerIncludingAssessedTax',
+  ],
+  costOfRevenue: ['CostOfGoodsAndServicesSold', 'CostOfRevenue', 'CostOfGoodsSold'],
   grossProfit: ['GrossProfit'],
   operatingIncome: ['OperatingIncomeLoss'],
-  netIncome: ['NetIncomeLoss'],
-  eps: ['EarningsPerShareBasic'],
-  ocf: ['NetCashProvidedByUsedInOperatingActivities'],
-  capex: ['PaymentsToAcquirePropertyPlantAndEquipment'],
-  depreciation: ['DepreciationDepletionAndAmortization'],
+  netIncome: [
+    'NetIncomeLoss',
+    'NetIncomeLossAvailableToCommonStockholdersBasic',
+    'ProfitLoss',
+  ],
+  eps: ['EarningsPerShareBasic', 'EarningsPerShareDiluted'],
+  ocf: [
+    'NetCashProvidedByUsedInOperatingActivities',
+    'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations',
+  ],
+  capex: [
+    'PaymentsToAcquirePropertyPlantAndEquipment',
+    'PaymentsForCapitalImprovements',
+  ],
+  depreciation: [
+    'DepreciationDepletionAndAmortization',
+    'Depreciation',
+    'DepreciationAndAmortization',
+  ],
   assets: ['Assets'],
-  equity: ['StockholdersEquity'],
-  cash: ['CashAndCashEquivalentsAtCarryingValue'],
+  equity: [
+    'StockholdersEquity',
+    'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
+  ],
+  cash: [
+    'CashAndCashEquivalentsAtCarryingValue',
+    'CashCashEquivalentsAndShortTermInvestments',
+  ],
   sharesOut: ['CommonStockSharesOutstanding'],
 };
 
@@ -101,29 +176,34 @@ function exM(facts: any, keys: string[], mode: 'Y' | 'Q') {
   for (const k of keys) {
     const s = g[k]?.units?.USD || g[k]?.units?.['USD/shares'];
     if (s) {
-      const filtered = mode === 'Y'
-        ? s.filter((p: any) => p.form === '10-K' && p.fp === 'FY')
-        : s.filter((p: any) => p.form === '10-Q' || (p.form === '10-K' && p.fp === 'FY'));
+      const filtered =
+        mode === 'Y'
+          ? s.filter((p: any) => p.form === '10-K' && p.fp === 'FY')
+          : s.filter((p: any) => p.form === '10-Q' || (p.form === '10-K' && p.fp === 'FY'));
       r = r.concat(filtered);
     }
   }
   const m = new Map();
-  r.sort((a, b) => new Date(b.filed).getTime() - new Date(a.filed).getTime())
-    .forEach((x: any) => {
+  r.sort((a, b) => new Date(b.filed).getTime() - new Date(a.filed).getTime()).forEach(
+    (x: any) => {
       const key = mode === 'Y' ? x.fy : `${x.fy}-${x.fp}`;
       if (!m.has(key)) m.set(key, x);
-    });
+    },
+  );
   return Array.from(m.values()).sort((a: any, b: any) => b.fy - a.fy);
 }
 
 function proc(facts: any, mode: 'Y' | 'Q') {
   const ex: any = {};
-  Object.entries(CON).forEach(([k, keys]) => { ex[k] = exM(facts, keys, mode); });
+  Object.entries(CON).forEach(([k, keys]) => {
+    ex[k] = exM(facts, keys, mode);
+  });
 
   const allE = Object.values(ex).flat();
-  let pK: any[] = mode === 'Y'
-    ? [...new Set(allE.map((d: any) => d.fy))].sort((a, b) => b - a)
-    : [...new Set(allE.map((d: any) => `${d.fy}-${d.fp}`))];
+  let pK: any[] =
+    mode === 'Y'
+      ? [...new Set(allE.map((d: any) => d.fy))].sort((a: any, b: any) => b - a)
+      : [...new Set(allE.map((d: any) => `${d.fy}-${d.fp}`))];
 
   const gv = (k: string, pk: any) => {
     const arr = ex[k] || [];
@@ -131,15 +211,19 @@ function proc(facts: any, mode: 'Y' | 'Q') {
     const [fy, fp] = String(pk).split('-');
     return arr.find((d: any) => d.fy === Number(fy) && d.fp === fp)?.val;
   };
-  const getLabel = (pk: any) => mode === 'Y' ? String(pk) : String(pk).replace('-', ' ');
+  const getLabel = (pk: any) => (mode === 'Y' ? String(pk) : String(pk).replace('-', ' '));
 
   const metricSeries: any = {};
-  Object.keys(CON).forEach(k => {
-    metricSeries[k] = pK.map(pk => ({ label: getLabel(pk), value: gv(k, pk), periodKey: pk }));
+  Object.keys(CON).forEach((k) => {
+    metricSeries[k] = pK.map((pk) => ({
+      label: getLabel(pk),
+      value: gv(k, pk),
+      periodKey: pk,
+    }));
   });
 
   const computedSeries: any = { grossMargin: [], netMargin: [], fcf: [], roe: [] };
-  pK.forEach(pk => {
+  pK.forEach((pk) => {
     const rev = gv('revenue', pk);
     const gp = gv('grossProfit', pk);
     const ni = gv('netIncome', pk);
@@ -147,10 +231,26 @@ function proc(facts: any, mode: 'Y' | 'Q') {
     const cx = gv('capex', pk);
     const eq = gv('equity', pk);
 
-    computedSeries.grossMargin.push({ label: getLabel(pk), value: (gp && rev) ? gp / rev * 100 : null, periodKey: pk });
-    computedSeries.netMargin.push({ label: getLabel(pk), value: (ni && rev) ? ni / rev * 100 : null, periodKey: pk });
-    computedSeries.fcf.push({ label: getLabel(pk), value: (ocf != null && cx != null) ? ocf - cx : null, periodKey: pk });
-    computedSeries.roe.push({ label: getLabel(pk), value: (ni && eq) ? ni / eq * 100 : null, periodKey: pk });
+    computedSeries.grossMargin.push({
+      label: getLabel(pk),
+      value: gp && rev ? (gp / rev) * 100 : null,
+      periodKey: pk,
+    });
+    computedSeries.netMargin.push({
+      label: getLabel(pk),
+      value: ni && rev ? (ni / rev) * 100 : null,
+      periodKey: pk,
+    });
+    computedSeries.fcf.push({
+      label: getLabel(pk),
+      value: ocf != null && cx != null ? ocf - Math.abs(cx) : null,
+      periodKey: pk,
+    });
+    computedSeries.roe.push({
+      label: getLabel(pk),
+      value: ni && eq ? (ni / eq) * 100 : null,
+      periodKey: pk,
+    });
   });
 
   return { metricSeries, computedSeries, periodKeys: pK, getLabel };
@@ -169,27 +269,57 @@ const MiniChart = ({ data, label, unit, dark }: any) => {
   const valid = data.filter((d: any) => d.value != null);
   if (valid.length < 2) return null;
   const vals = valid.map((d: any) => d.value);
-  const mn = Math.min(...vals), mx = Math.max(...vals);
-  const pad = (mx - mn) * 0.1;
-  const W = 280, H = 100, L = 38;
-  const cw = W - L - 8, ch = H - 18;
+  const mn = Math.min(...vals),
+    mx = Math.max(...vals);
+  const pad = (mx - mn) * 0.1 || 1;
+  const W = 280,
+    H = 100,
+    L = 38;
+  const cw = W - L - 8,
+    ch = H - 18;
   const xp = (i: number) => L + (i / (valid.length - 1)) * cw;
-  const yp = (v: number) => 6 + ch - ((v - (mn - pad)) / ((mx + pad) - (mn - pad))) * ch;
+  const yp = (v: number) => 6 + ch - ((v - (mn - pad)) / (mx + pad - (mn - pad))) * ch;
   const pts = valid.map((d: any, i: number) => `${xp(i)},${yp(d.value)}`).join(' ');
   return (
     <div className="rounded-xl p-3 border bg-white/60 dark:bg-slate-900/60">
       <div className="text-xs font-medium mb-1 text-slate-600 dark:text-slate-400">{label}</div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[100px]">
-        <polyline points={pts} fill="none" stroke={dark ? '#34d399' : '#059669'} strokeWidth="2" />
-        {valid.map((d: any, i: number) => <circle key={i} cx={xp(i)} cy={yp(d.value)} r="2.5" fill={dark ? '#34d399' : '#059669'} />)}
+        <polyline
+          points={pts}
+          fill="none"
+          stroke={dark ? '#34d399' : '#059669'}
+          strokeWidth="2"
+        />
+        {valid.map((d: any, i: number) => (
+          <circle
+            key={i}
+            cx={xp(i)}
+            cy={yp(d.value)}
+            r="2.5"
+            fill={dark ? '#34d399' : '#059669'}
+          />
+        ))}
       </svg>
     </div>
   );
 };
 
+function StatusDot({ ok, label }: { ok: boolean | null; label: string }) {
+  const color =
+    ok === true ? 'bg-emerald-500' : ok === false ? 'bg-red-500' : 'bg-slate-400 animate-pulse';
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+      <span className={`inline-block w-2 h-2 rounded-full ${color}`} />
+      {label}
+    </span>
+  );
+}
+
 function App() {
-  const [lang, setLang] = useState<Language>('en');
-  const [dark, setDark] = useState(true);
+  const [lang, setLang] = useState<Language>(
+    () => (localStorage.getItem('sec-lang') as Language) || 'en',
+  );
+  const [dark, setDark] = useState(() => localStorage.getItem('sec-dark') !== '0');
   const [ticker, setTicker] = useState('AAPL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -198,44 +328,140 @@ function App() {
   const [mode, setMode] = useState<'Y' | 'Q'>('Y');
   const [view, setView] = useState<'table' | 'charts'>('table');
   const [scaleSlider, setScaleSlider] = useState(50);
-  const [proxyBase, setProxyBase] = useState(localStorage.getItem('sec-proxy') || 'http://localhost:8012');
+  const [showProxyHelp, setShowProxyHelp] = useState(false);
 
-  const processed = useMemo(() => facts ? proc(facts, mode) : null, [facts, mode]);
+  // Dual proxy bases (fundamentals-runtime style) + optional unified Bun proxy
+  const [wwwBase, setWwwBase] = useState(
+    () => localStorage.getItem(LS_WWW) || localStorage.getItem(LS_UNIFIED) || '',
+  );
+  const [dataBase, setDataBase] = useState(
+    () => localStorage.getItem(LS_DATA) || localStorage.getItem(LS_UNIFIED) || '',
+  );
+  const [wwwOk, setWwwOk] = useState<boolean | null>(null);
+  const [dataOk, setDataOk] = useState<boolean | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+
+  const processed = useMemo(() => (facts ? proc(facts, mode) : null), [facts, mode]);
   const scale = 0.7 + (scaleSlider / 100) * 0.8;
 
-  useEffect(() => { document.documentElement.classList.toggle('dark', dark); }, [dark]);
-  useEffect(() => { localStorage.setItem('sec-proxy', proxyBase); }, [proxyBase]);
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+    localStorage.setItem('sec-dark', dark ? '1' : '0');
+  }, [dark]);
+  useEffect(() => {
+    localStorage.setItem('sec-lang', lang);
+  }, [lang]);
+  useEffect(() => {
+    if (wwwBase) localStorage.setItem(LS_WWW, wwwBase);
+  }, [wwwBase]);
+  useEffect(() => {
+    if (dataBase) localStorage.setItem(LS_DATA, dataBase);
+  }, [dataBase]);
 
-  const fetchWithProxy = async (path: string) => {
-    const res = await fetch(`${proxyBase}${path}`, {
-      headers: { 'User-Agent': 'fundamentals-demo contact@daggerok.github.io' }
+  const log = useCallback((msg: string) => {
+    setLogs((prev) => [...prev.slice(-40), msg]);
+  }, []);
+
+  const fetchJson = async (url: string) => {
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        // Browser cannot override User-Agent; proxy must inject it.
+      },
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
     return res.json();
   };
 
   const loadData = async (sym: string) => {
     const s = sym.trim().toUpperCase();
     if (!s) return;
-    setLoading(true); setError(''); setCompany(null); setFacts(null);
+    setLoading(true);
+    setError('');
+    setCompany(null);
+    setFacts(null);
+    setLogs([]);
 
     try {
+      // 1) company tickers — prefer static GitHub Pages cache, then www proxy
       let tickers: any = null;
-      try { const r = await fetch('/data/company_tickers.json'); if (r.ok) tickers = await r.json(); } catch {}
-      if (!tickers) tickers = await fetchWithProxy('/api/company_tickers');
+      log('Loading company_tickers…');
+      try {
+        const r = await fetch('/data/company_tickers.json');
+        if (r.ok) {
+          tickers = await r.json();
+          // Ignore tiny stubs (dev placeholder with only a few entries)
+          const n = tickers && typeof tickers === 'object' ? Object.keys(tickers).length : 0;
+          if (n >= 50) {
+            log(`✅ static data/company_tickers.json (${n} entries)`);
+          } else {
+            log(`static tickers too small (${n}) — will use proxy`);
+            tickers = null;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (!tickers) {
+        log('Probing www.sec.gov proxy…');
+        const candidates = [
+          ...(wwwBase ? [wwwBase] : []),
+          ...WWW_CANDIDATES,
+          ...UNIFIED_CANDIDATES,
+        ];
+        // dedupe
+        const uniq = [...new Set(candidates)];
+        const { base, res } = await probeBase(uniq, '/files/company_tickers.json');
+        setWwwBase(base);
+        setWwwOk(true);
+        log(`✅ www proxy: ${base}`);
+        tickers = await res.json();
+        // Also try unified alias path
+        if (!tickers) {
+          tickers = await fetchJson(`${base}/api/company_tickers`);
+        }
+      } else {
+        setWwwOk(true);
+      }
 
       const list = Object.values(tickers || {}) as any[];
       const found = list.find((c: any) => c.ticker?.toUpperCase() === s);
       if (!found) throw new Error(`Ticker "${s}" not found`);
 
       const cik = String(found.cik_str).padStart(10, '0');
-      const factsJson = await fetchWithProxy(`/api/xbrl/companyfacts/CIK${cik}.json`);
+      log(`Found ${s} → CIK ${cik}`);
+
+      // 2) company facts via data.sec.gov proxy
+      log('Probing data.sec.gov proxy…');
+      const dataCandidates = [
+        ...(dataBase ? [dataBase] : []),
+        ...DATA_CANDIDATES,
+        ...UNIFIED_CANDIDATES,
+      ];
+      const uniqData = [...new Set(dataCandidates)];
+      const factsPath = `/api/xbrl/companyfacts/CIK${cik}.json`;
+      const { base: dBase, res: factsRes } = await probeBase(uniqData, factsPath);
+      setDataBase(dBase);
+      setDataOk(true);
+      log(`✅ data proxy: ${dBase}`);
+      const factsJson = await factsRes.json();
 
       const comp = { ticker: s, title: found.title, cik };
       setCompany(comp);
       setFacts(factsJson);
+      try {
+        localStorage.setItem('sec-last', JSON.stringify({ company: comp, facts: factsJson }));
+      } catch {
+        /* quota */
+      }
+      log('✅ company facts loaded');
     } catch (e: any) {
-      setError(e.message || t('error.proxy', lang));
+      setWwwOk((v) => (v === true ? v : false));
+      setDataOk((v) => (v === true ? v : false));
+      const msg = e?.message || t('error.proxy', lang);
+      setError(msg);
+      log(`❌ ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -244,8 +470,11 @@ function App() {
   const handleLoad = () => loadData(ticker);
 
   const clearCache = () => {
-    setFacts(null); setCompany(null); setError('');
+    setFacts(null);
+    setCompany(null);
+    setError('');
     localStorage.removeItem('sec-last');
+    log('cache cleared');
   };
 
   useEffect(() => {
@@ -258,54 +487,146 @@ function App() {
           setFacts(p.facts);
           setTicker(p.company.ticker);
         }
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
   }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <header className="sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <span className="font-bold text-xl">SEC Fundamentals</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">EDGAR</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex border border-slate-300 dark:border-slate-700 rounded-lg text-sm overflow-hidden">
-              <button onClick={() => setMode('Y')} className={`px-3 py-1 ${mode === 'Y' ? 'bg-emerald-600 text-white' : ''}`}>{t('mode.y', lang)}</button>
-              <button onClick={() => setMode('Q')} className={`px-3 py-1 ${mode === 'Q' ? 'bg-emerald-600 text-white' : ''}`}>{t('mode.q', lang)}</button>
+            <span className="font-bold text-xl">{t('app.brand', lang)}</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+              EDGAR
+            </span>
+            <div className="hidden sm:flex items-center gap-3 ml-2">
+              <StatusDot ok={wwwOk} label="www" />
+              <StatusDot ok={dataOk} label="data" />
             </div>
-            <button onClick={() => setView(v => v === 'table' ? 'charts' : 'table')} className="px-3 py-1 text-sm border rounded-lg">
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex border border-slate-300 dark:border-slate-700 rounded-lg text-sm overflow-hidden">
+              <button
+                onClick={() => setMode('Y')}
+                className={`px-3 py-1 ${mode === 'Y' ? 'bg-emerald-600 text-white' : ''}`}
+              >
+                {t('mode.y', lang)}
+              </button>
+              <button
+                onClick={() => setMode('Q')}
+                className={`px-3 py-1 ${mode === 'Q' ? 'bg-emerald-600 text-white' : ''}`}
+              >
+                {t('mode.q', lang)}
+              </button>
+            </div>
+            <button
+              onClick={() => setView((v) => (v === 'table' ? 'charts' : 'table'))}
+              className="px-3 py-1 text-sm border rounded-lg"
+            >
               {view === 'table' ? t('view.charts', lang) : t('view.table', lang)}
             </button>
-            <button onClick={() => setDark(!dark)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+            <button
+              onClick={() => setLang((l) => (l === 'en' ? 'ru' : 'en'))}
+              className="px-2 py-1 text-sm border rounded-lg font-mono"
+              title="Language"
+            >
+              {lang.toUpperCase()}
+            </button>
+            <button
+              onClick={() => setShowProxyHelp((v) => !v)}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              title={t('settings.proxy', lang)}
+            >
+              <Settings2 size={17} />
+            </button>
+            <button
+              onClick={() => setDark(!dark)}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
               {dark ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <button onClick={clearCache} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><RefreshCw size={17} /></button>
+            <button
+              onClick={clearCache}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <RefreshCw size={17} />
+            </button>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {showProxyHelp && (
+          <div className="mb-6 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+            <p className="font-bold mb-3">{t('proxy.help', lang)}</p>
+            <p className="text-sm text-slate-500 mb-3">
+              Same dual-proxy solution as{' '}
+              <a
+                className="text-emerald-600 underline"
+                href="https://github.com/daggerok/fundamentals-runtime"
+                target="_blank"
+                rel="noreferrer"
+              >
+                fundamentals-runtime
+              </a>
+              :
+            </p>
+            <div className="grid md:grid-cols-2 gap-3 mb-3">
+              <pre className="bg-slate-50 dark:bg-slate-950 text-emerald-700 dark:text-emerald-300 p-3 rounded text-xs font-mono overflow-x-auto">{`bunx local-cors-proxy \\\n  --proxyUrl https://www.sec.gov \\\n  --port 8011`}</pre>
+              <pre className="bg-slate-50 dark:bg-slate-950 text-emerald-700 dark:text-emerald-300 p-3 rounded text-xs font-mono overflow-x-auto">{`bunx local-cors-proxy \\\n  --proxyUrl https://data.sec.gov \\\n  --port 8012`}</pre>
+            </div>
+            <p className="text-sm text-slate-500 mb-2">
+              Or one modern Bun proxy (User-Agent + both hosts):
+            </p>
+            <pre className="bg-slate-50 dark:bg-slate-950 text-emerald-700 dark:text-emerald-300 p-3 rounded text-xs font-mono mb-3">{`bun ./scripts/sec-proxy.ts`}</pre>
+            <div className="text-xs text-slate-500 space-y-1 font-mono">
+              <div>
+                www base: {wwwBase || '—'} <StatusDot ok={wwwOk} label="" />
+              </div>
+              <div>
+                data base: {dataBase || '—'} <StatusDot ok={dataOk} label="" />
+              </div>
+            </div>
+            {logs.length > 0 && (
+              <pre className="mt-3 max-h-40 overflow-auto text-xs bg-slate-50 dark:bg-slate-950 p-2 rounded">
+                {logs.join('\n')}
+              </pre>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-2 mb-6">
           <input
             value={ticker}
-            onChange={e => setTicker(e.target.value.toUpperCase())}
-            onKeyDown={e => e.key === 'Enter' && handleLoad()}
+            onChange={(e) => setTicker(e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.key === 'Enter' && handleLoad()}
             placeholder={t('search.placeholder', lang)}
             className="flex-1 px-4 py-2.5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
-          <button onClick={handleLoad} disabled={loading} className="px-8 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl disabled:opacity-60">
+          <button
+            onClick={handleLoad}
+            disabled={loading}
+            className="px-8 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl disabled:opacity-60"
+          >
             {loading ? t('search.loading', lang) : t('search.load', lang)}
           </button>
         </div>
 
-        {error && <div className="mb-6 p-4 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-700 border border-red-200">{error}</div>}
+        {error && (
+          <div className="mb-6 p-4 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 whitespace-pre-wrap font-mono text-sm">
+            {error}
+          </div>
+        )}
 
         {company && (
           <div className="mb-4">
             <div className="text-3xl font-bold">{company.ticker}</div>
-            <div className="text-slate-500">{company.title}</div>
+            <div className="text-slate-500">
+              {company.title} · CIK {company.cik}
+            </div>
           </div>
         )}
 
@@ -313,31 +634,71 @@ function App() {
           <div className="space-y-6">
             {SEC_SECTIONS.map((section, i) => {
               const all = [
-                ...section.metrics.map(m => ({ ...m, series: processed.metricSeries[m.key] || [] })),
-                ...(section.computed || []).map(c => ({ ...c, series: processed.computedSeries[c.key] || [] })),
-              ].filter(m => m.series?.some((d: any) => d.value != null));
+                ...section.metrics.map((m) => ({
+                  ...m,
+                  series: processed.metricSeries[m.key] || [],
+                })),
+                ...(section.computed || []).map((c) => ({
+                  ...c,
+                  series: processed.computedSeries[c.key] || [],
+                })),
+              ].filter((m) => m.series?.some((d: any) => d.value != null));
               if (!all.length) return null;
 
               return (
                 <div key={i} className="fund-card rounded-3xl p-5 border">
                   <div className="flex justify-between items-center mb-3">
                     <div className="font-semibold text-lg">{section.title}</div>
-                    <input type="range" min="0" max="100" value={scaleSlider} onChange={e => setScaleSlider(+e.target.value)} className="scale-slider w-20" />
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={scaleSlider}
+                      onChange={(e) => setScaleSlider(+e.target.value)}
+                      className="scale-slider w-20"
+                    />
                   </div>
 
                   {view === 'charts' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {all.map(m => <MiniChart key={m.key} data={m.series} label={m.label} unit={m.unit} dark={dark} />)}
+                      {all.map((m) => (
+                        <MiniChart
+                          key={m.key}
+                          data={m.series}
+                          label={m.label}
+                          unit={m.unit}
+                          dark={dark}
+                        />
+                      ))}
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="fund-table w-full text-sm" style={{ fontSize: `${Math.round(13 * scale)}px` }}>
-                        <thead><tr><th className="text-left py-2">Metric</th>{processed.periodKeys.map((pk: any, i: number) => <th key={i} className="text-right px-2">{processed.getLabel(pk)}</th>)}</tr></thead>
+                      <table
+                        className="fund-table w-full text-sm"
+                        style={{ fontSize: `${Math.round(13 * scale)}px` }}
+                      >
+                        <thead>
+                          <tr>
+                            <th className="text-left py-2">Metric</th>
+                            {processed.periodKeys.map((pk: any, j: number) => (
+                              <th key={j} className="text-right px-2">
+                                {processed.getLabel(pk)}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {all.map(m => (
+                          {all.map((m) => (
                             <tr key={m.key}>
-                              <td className="py-1.5 pr-3 font-medium">{m.label} <span className="text-xs text-slate-400">({m.unit})</span></td>
-                              {m.series.map((d: any, i: number) => <td key={i} className="px-2 py-1.5 text-right font-mono">{fV(d.value, m.unit)}</td>)}
+                              <td className="py-1.5 pr-3 font-medium">
+                                {m.label}{' '}
+                                <span className="text-xs text-slate-400">({m.unit})</span>
+                              </td>
+                              {m.series.map((d: any, j: number) => (
+                                <td key={j} className="px-2 py-1.5 text-right font-mono">
+                                  {fV(d.value, m.unit)}
+                                </td>
+                              ))}
                             </tr>
                           ))}
                         </tbody>
@@ -350,11 +711,17 @@ function App() {
           </div>
         )}
 
-        {!company && !loading && <div className="text-center py-20 text-slate-500">{t('no.data', lang)}</div>}
+        {!company && !loading && (
+          <div className="text-center py-20 text-slate-500">{t('no.data', lang)}</div>
+        )}
       </div>
     </div>
   );
 }
 
 const root = document.getElementById('root');
-if (root) createRoot(root).render(<React.StrictMode><App /></React.StrictMode>);
+if (root) createRoot(root).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);

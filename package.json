@@ -1,26 +1,25 @@
 {
   "name": "fundamentals",
   "version": "0.2.0",
-  "description": "SEC EDGAR Financial Fundamentals Dashboard",
+  "description": "SEC EDGAR Financial Fundamentals Dashboard — React + TypeScript + Tailwind v4 (Parcel)",
   "source": "src/index.html",
   "scripts": {
     "clean": "rimraf -rf dist",
     "ncp": "ncp data dist/data",
     "build-github-pages": "npm run build -- --public-url=/fundamentals/",
     "preserve": "npm run ncp",
-    "serve": "parcel --no-cache --no-source-maps",
+    "serve:app": "parcel --no-cache --no-source-maps",
+    "serve:proxy-www": "bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011",
+    "serve:proxy-data": "bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012",
+    "serve": "npm-run-all --parallel serve:*",
     "build": "parcel build --no-cache --no-source-maps",
     "postbuild": "npm run ncp",
 
     "all:proxy": "bun ./scripts/sec-proxy.ts",
-    "all:serve": "npm run serve",
+    "all:serve": "npm run serve:app",
     "all": "npm-run-all --parallel all:*",
 
-    "serve:proxy-www": "bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011",
-    "serve:proxy-data": "bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012",
-    "serve:legacy": "npm-run-all --parallel serve:proxy-www serve:proxy-data serve",
-
-    "start": "pm2 start 'npm run all' --name fundamentals",
+    "start": "pm2 start 'npm run serve' --name fundamentals",
     "restart": "pm2 restart fundamentals",
     "ps": "pm2 ps",
     "logs": "pm2 logs",
@@ -35,7 +34,8 @@
     "typescript",
     "tailwind",
     "parcel",
-    "bun"
+    "bun",
+    "github-pages"
   ],
   "author": "Maksim Kostromin / GitHub: daggerok",
   "license": "MIT",

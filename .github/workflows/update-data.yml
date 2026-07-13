@@ -24,11 +24,35 @@ jobs:
           curl -sL -H "User-Agent: fundamentals-demo contact@daggerok.github.io" \
             https://www.sec.gov/files/company_tickers.json > data/company_tickers.json
           echo "Fetched $(jq length data/company_tickers.json) tickers"
+          # index.json for options-desk-style manifest
+          python3 - <<'PY'
+          import json, datetime
+          from pathlib import Path
+          p = Path("data/company_tickers.json")
+          tickers = json.loads(p.read_text())
+          index = {
+            "files": {"company_tickers.json": datetime.datetime.now(datetime.timezone.utc).isoformat()},
+            "count": len(tickers),
+            "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "names": {},
+            "no_options": {},
+          }
+          Path("data/index.json").write_text(json.dumps(index, indent=2) + "\n")
+          PY
 
       - name: Commit refreshed data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/
-          git commit -m "data: refresh company_tickers.json (SEC EDGAR)" || echo "No changes"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to data"
+          else
+            git commit -m "data: refresh company_tickers.json (SEC EDGAR)"
+            # Use PAT for pushes so that commits trigger other workflows (GitHub Pages deploy etc.)
+            TOKEN="${{ secrets.WORKFLOW_PUSH_TOKEN || secrets.GITHUB_TOKEN }}"
+            if [ "$TOKEN" = "${{ secrets.GITHUB_TOKEN }}" ]; then
+              echo "WARNING: Using GITHUB_TOKEN may not trigger downstream workflows. Configure WORKFLOW_PUSH_TOKEN secret."
+            fi
+            git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }} || echo "Push failed (check token)"
+          fi
