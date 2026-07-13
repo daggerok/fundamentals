@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+:root {
+  --od-bg: #f8fafc;
+  --od-card: #ffffff;
+  --od-border: #e2e8f0;
+}
+
+.dark {
+  --od-bg: #0f172a;
+  --od-card: #1e293b;
+  --od-border: #334155;
+}
+
+body {
+  background: var(--od-bg);
+  color: #0f172a;
+}
+
+.dark body {
+  color: #f1f5f9;
+}
+
+.themed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #64748b33 transparent;
+}
+
+.themed-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.themed-scroll::-webkit-scrollbar-thumb {
+  background: #64748b44;
+  border-radius: 3px;
+}
+
+/* Fundamentals specific styles (adapted from old app) */
+.fund-card {
+  background: var(--od-card);
+  border: 1px solid var(--od-border);
+}
+
+.fund-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+}
+
+.dark .fund-table th {
+  color: #94a3b8;
+}
+
+.fund-metric {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.scale-slider {
+  accent-color: #10b981;
+}
+
+/* Console / logs */
+.console {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}

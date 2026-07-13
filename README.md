@@ -1,78 +1,75 @@
 # fundamentals
 
-Fundamentals app using SEC free financial data API [article](https://dev.to/m0dus/the-sec-has-a-free-financial-data-api-that-nobody-talks-about-dfi)
+Fundamentals app using SEC free financial data API.
 
-<!-- https://arena.ai/c/019f1c6c-8842-7637-852c-fdba43e83e64 -->
-
-## Быстрый старт / Quick start
-
-1. Запустите прокси для www.sec.gov:
+## Быстрый старт / Quick start (точно как в fundamentals-runtime)
 
 ```bash
+bun install -E
+
+bun stop ; bun kill ; bun ps ; bun start ; bun logs
+```
+
+Откройте: **http://localhost:1234**
+
+---
+
+## Запуск с прокси (рекомендуется)
+
+### Вариант 1: Один современный прокси (лучший способ)
+
+**Терминал 1** (прокси — обрабатывает и www.sec.gov и data.sec.gov):
+```bash
+bun ./scripts/sec-proxy.ts
+```
+
+**Терминал 2** (приложение):
+```bash
+bun run serve
+```
+
+Приложение откроется на http://localhost:1234
+
+### Вариант 2: Два отдельных прокси (как было в fundamentals-runtime)
+
+```bash
+# Терминал 1
 bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011
-```
 
-2. Запустите прокси для data.sec.gov:
-
-```bash
+# Терминал 2
 bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012
+
+# Терминал 3
+bun run serve
 ```
 
-3. Запустите статический сервер:
+---
+
+## Команды через pm2 (как в fundamentals-runtime)
 
 ```bash
-bunx serve .
+bun start      # запустить всё
+bun ps
+bun logs
+bun restart
+bun stop
+bun kill
 ```
 
-4. Откройте приложение:
+---
+
+## Сборка
 
 ```bash
-open http://localhost:3000/
+bun run build
+bun run build-github-pages
 ```
 
 ---
 
-## 📚 Документация / Documentation
+## Полезные ссылки
 
-Все документы находятся в директории `docs/`:
+- GitHub Pages: https://daggerok.github.io/fundamentals/
+- [fundamentals-runtime](https://github.com/daggerok/fundamentals-runtime) — предыдущая версия
 
-| Документ | Описание |
-|----------|----------|
-| [findings.en.md](docs/findings.en.md) | Архитектурный обзор (английский) — технологии, библиотеки, проблемы, рекомендации |
-| [findings.ru.md](docs/findings.ru.md) | Архитектурный обзор (русский) |
-| [REQUIREMENTS.en.md](docs/REQUIREMENTS.en.md) | Требования к приложению (английский) — для общения с AI-агентами и разработки |
-| [REQUIREMENTS.ru.md](docs/REQUIREMENTS.ru.md) | Требования к приложению (русский) |
-
-> Эти документы были подготовлены в рамках архитектурного ревью для удобства дальнейшей разработки и форка showcase-версии.
-
----
-
-## О приложении / About
-
-Приложение позволяет анализировать фундаментальные данные публичных компаний США с использованием бесплатного API SEC EDGAR (XBRL).
-
-- Поиск по тикеру или названию компании
-- Годовой и квартальный режимы
-- Таблицы + мини-графики
-- Income Statement, Cash Flow, Balance Sheet, Per Share метрики
-- Вычисляемые коэффициенты (маржи, FCF, ROE и др.)
-- Тёмная/светлая тема, масштабирование, кэширование
-
----
-
-## Ограничения текущей версии
-
-- Однофайловое HTML-приложение (намеренно для прототипа)
-- Требует локальных прокси (CORS)
-- Использует Babel standalone в браузере (для демонстрации)
-
-Для production / showcase-версии рекомендуется перейти на сборку (Vite и т.п.) + серверный прокси.
-
----
-
-## Ссылки
-
-- [GitHub Pages](https://daggerok.github.io/fundamentals/)
-- [SEC EDGAR API](https://www.sec.gov/edgar/sec-api-documentation)
-
-*Проект находится в активной разработке.*
+Готово. Выполни команды из раздела "Быстрый старт" и приложение запустится.
