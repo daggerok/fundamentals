@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, 'architect-review/*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/package.json', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install -E
+
+      - name: Build (Parcel)
+        run: bun run build
+
+      - name: Build for GitHub Pages
+        run: bun run build-github-pages
+
+      - name: List dist (debug)
+        run: ls -la dist/ || echo "dist not created"

@@ -1,0 +1,43 @@
+name: Update SEC data
+
+on:
+  schedule:
+    - cron: "0 3 * * 1-5"   # weekdays at 03:00 UTC
+    - cron: "0 15 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install -E
+
+      # Pre-fetch company tickers for GitHub Pages (static cache)
+      - name: Fetch company tickers
+        run: |
+          mkdir -p data
+          curl -sL -H "User-Agent: fundamentals-demo contact@daggerok.github.io" \
+            https://www.sec.gov/files/company_tickers.json > data/company_tickers.json
+          echo "Fetched $(jq length data/company_tickers.json) tickers"
+
+      - name: Commit refreshed data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No changes to data"
+          else
+            git commit -m "data: refresh company_tickers.json (SEC EDGAR)"
+            # Use PAT for pushes so that commits trigger other workflows (GitHub Pages deploy etc.)
+            TOKEN="${{ secrets.WORKFLOW_PUSH_TOKEN || secrets.GITHUB_TOKEN }}"
+            if [ "$TOKEN" = "${{ secrets.GITHUB_TOKEN }}" ]; then
+              echo "WARNING: Using GITHUB_TOKEN may not trigger downstream workflows. Configure WORKFLOW_PUSH_TOKEN secret."
+            fi
+            git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }} || echo "Push failed (check token)"
+          fi
