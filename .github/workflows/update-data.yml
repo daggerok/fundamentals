@@ -23,9 +23,10 @@ jobs:
   update:
     runs-on: ubuntu-latest
     env:
+      MAX_RETRIES: "1"
       MAX_FETCHES: "40"
-      REQUEST_SLEEP: "0.25"
-      SKIP_FRESH_HOURS: "24"
+      SKIP_FRESH_HOURS: "1"
+      REQUEST_SLEEP_MINUTES: "1"
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout

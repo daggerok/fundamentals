@@ -11,7 +11,7 @@
 #   uv run python scripts/fetch_data.py
 #   TICKERS="AAPL MSFT NVDA" MAX_FETCHES=20 uv run python scripts/fetch_data.py
 #
-# ENV: TICKERS, MAX_FETCHES (40), REQUEST_SLEEP (0.2), SKIP_FRESH_HOURS (24),
+# ENV: TICKERS, MAX_FETCHES (40), REQUEST_SLEEP_MINUTES (0.2), SKIP_FRESH_HOURS (24),
 #      SEC_USER_AGENT ("Name email@example.com")
 # =============================================================================
 
@@ -34,10 +34,10 @@ UA = os.environ.get("SEC_USER_AGENT", DEFAULT_UA).strip() or DEFAULT_UA
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 
+REQUEST_SLEEP_MINUTES = float(os.environ.get("REQUEST_SLEEP_MINUTES", "1"))
+SKIP_FRESH_HOURS = float(os.environ.get("SKIP_FRESH_HOURS", "1"))
 MAX_FETCHES = int(os.environ.get("MAX_FETCHES", "40"))
-REQUEST_SLEEP = float(os.environ.get("REQUEST_SLEEP", "0.2"))
-SKIP_FRESH_HOURS = float(os.environ.get("SKIP_FRESH_HOURS", "24"))
-MAX_RETRIES = 3
+MAX_RETRIES = int(os.environ.get("MAX_FETCHES", "3"))
 
 DEFAULT_TICKERS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG", "TSLA", "BRK-B",
@@ -258,7 +258,7 @@ def main() -> int:
         url = SEC_FACTS_URL.format(cik=cik)
         _log(f"FETCH [{i}/{len(queue)}] {sym} CIK{cik}")
         try:
-            time.sleep(REQUEST_SLEEP)
+            time.sleep(REQUEST_SLEEP_MINUTES)
             raw = _get_json(session, url)
             out = write_ticker_cache(sym, meta, raw)
             fetched += 1
