@@ -1,9 +1,20 @@
 {
   "files": {
-    "company_tickers.json": "stub"
+    "AAPL": "2026-07-13T22:16:08.147342+00:00",
+    "AMZN": "2026-07-13T22:16:10.804000+00:00",
+    "META": "2026-07-13T22:16:11.505545+00:00",
+    "MSFT": "2026-07-13T22:16:08.883617+00:00",
+    "NVDA": "2026-07-13T22:16:10.150358+00:00",
+    "company_tickers.json": "2026-07-13T22:16:11.729614+00:00"
   },
-  "count": 8,
-  "generated": "stub-for-dev-full-list-via-proxy-or-update-data-workflow",
-  "names": {},
+  "count": 5,
+  "generated": "2026-07-13T22:16:11.729727+00:00",
+  "names": {
+    "AAPL": "Apple Inc.",
+    "AMZN": "AMAZON COM INC",
+    "META": "Meta Platforms, Inc.",
+    "MSFT": "MICROSOFT CORP",
+    "NVDA": "NVIDIA CORP"
+  },
   "no_options": {}
 }

@@ -1,15 +1,10 @@
-# =============================================================================
-# Fundamentals — SEC company_tickers static cache (GitHub Action)
-# -----------------------------------------------------------------------------
-# INFRASTRUCTURE. Mirrors options-desk update-data workflow (uv + Python).
-#   1. uv run scripts/fetch_data.py → data/company_tickers.json + data/index.json
-#   2. Commit refreshed data/ back to the repo for GitHub Pages.
-# =============================================================================
+# Fundamentals — SEC static cache (options-desk pattern)
+# uv run scripts/fetch_data.py → data/company_tickers.json + data/{TICKER}.json + index.json
 name: Update SEC data
 
 on:
   schedule:
-    - cron: "0 3 * * 1-5"   # weekdays at 03:00 UTC
+    - cron: "0 3 * * 1-5"
     - cron: "0 15 * * 1-5"
   workflow_dispatch: {}
 
@@ -21,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
+      MAX_FETCHES: "40"
+      REQUEST_SLEEP: "0.25"
+      SKIP_FRESH_HOURS: "24"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +29,7 @@ jobs:
           enable-cache: true
           python-version: "3.13"
 
-      - name: Fetch company_tickers (SEC EDGAR)
+      - name: Prefetch SEC static cache (tickers + companyfacts)
         run: uv run python scripts/fetch_data.py
 
       - name: Commit refreshed data
@@ -42,6 +40,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No data changes — nothing to commit."
           else
-            git commit -m "chore(data): refresh company_tickers.json (SEC EDGAR)"
+            git commit -m "chore(data): refresh SEC static cache [skip ci]"
             git push || echo "Push failed (may be up-to-date or race condition)"
           fi

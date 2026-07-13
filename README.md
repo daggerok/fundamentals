@@ -186,3 +186,21 @@ bun run data:fetch
 
 Writes `data/company_tickers.json` + `data/index.json`.  
 GitHub Action **Update SEC data** runs this on a schedule via `astral-sh/setup-uv`.
+
+---
+
+## Static CACHE (options-desk pattern)
+
+Pre-fetch SEC companyfacts into `data/{TICKER}.json`, then `postbuild` copies `data/` → `dist/data/` for GitHub Pages.
+
+```bash
+# fetch company_tickers + facts for seed tickers (or TICKERS=...)
+TICKERS="AAPL MSFT NVDA" MAX_FETCHES=20 uv run python scripts/fetch_data.py
+bun run build   # ncp → dist/data/
+```
+
+In the app **Settings → Data source**:
+- **CACHE** (default on GitHub Pages): load `/data/{TICKER}.json` (no proxy)
+- **LIVE** (default on localhost): SEC via local proxy
+
+GitHub Action **Update SEC data** grows the cache on a schedule (`MAX_FETCHES` per run).
