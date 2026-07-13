@@ -1,10 +1,17 @@
+# =============================================================================
+# Fundamentals — SEC company_tickers static cache (GitHub Action)
+# -----------------------------------------------------------------------------
+# INFRASTRUCTURE. Mirrors options-desk update-data workflow (uv + Python).
+#   1. uv run scripts/fetch_data.py → data/company_tickers.json + data/index.json
+#   2. Commit refreshed data/ back to the repo for GitHub Pages.
+# =============================================================================
 name: Update SEC data
 
 on:
   schedule:
     - cron: "0 3 * * 1-5"   # weekdays at 03:00 UTC
     - cron: "0 15 * * 1-5"
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -12,47 +19,29 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install -E
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Pre-fetch company tickers for GitHub Pages (static cache)
-      - name: Fetch company tickers
-        run: |
-          mkdir -p data
-          curl -sL -H "User-Agent: fundamentals-demo contact@daggerok.github.io" \
-            https://www.sec.gov/files/company_tickers.json > data/company_tickers.json
-          echo "Fetched $(jq length data/company_tickers.json) tickers"
-          # index.json for options-desk-style manifest
-          python3 - <<'PY'
-          import json, datetime
-          from pathlib import Path
-          p = Path("data/company_tickers.json")
-          tickers = json.loads(p.read_text())
-          index = {
-            "files": {"company_tickers.json": datetime.datetime.now(datetime.timezone.utc).isoformat()},
-            "count": len(tickers),
-            "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "names": {},
-            "no_options": {},
-          }
-          Path("data/index.json").write_text(json.dumps(index, indent=2) + "\n")
-          PY
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Fetch company_tickers (SEC EDGAR)
+        run: uv run python scripts/fetch_data.py
 
       - name: Commit refreshed data
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/
-          if git diff --cached --quiet; then
-            echo "No changes to data"
+          git config user.name  "Maksim Kostromin"
+          git config user.email "daggerok@gmail.com"
+          git add data/ || true
+          if git diff --staged --quiet; then
+            echo "No data changes — nothing to commit."
           else
-            git commit -m "data: refresh company_tickers.json (SEC EDGAR)"
-            # Use PAT for pushes so that commits trigger other workflows (GitHub Pages deploy etc.)
-            TOKEN="${{ secrets.WORKFLOW_PUSH_TOKEN || secrets.GITHUB_TOKEN }}"
-            if [ "$TOKEN" = "${{ secrets.GITHUB_TOKEN }}" ]; then
-              echo "WARNING: Using GITHUB_TOKEN may not trigger downstream workflows. Configure WORKFLOW_PUSH_TOKEN secret."
-            fi
-            git push https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }} || echo "Push failed (check token)"
+            git commit -m "chore(data): refresh company_tickers.json (SEC EDGAR)"
+            git push || echo "Push failed (may be up-to-date or race condition)"
           fi

@@ -57,6 +57,9 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.scale': 'Text scale',
     'settings.console': 'Debug console',
     'settings.proxyWww': 'www.sec.gov proxy',
+    'settings.proxyWwwUrl': 'www proxy base URL',
+    'settings.proxyDataUrl': 'data proxy base URL',
+    'settings.proxyReset': 'Reset proxy URLs to defaults',
     'settings.proxyData': 'data.sec.gov proxy',
     'settings.clearCache': 'Clear cached company',
     'guide.details': 'Setup details (README)',
@@ -144,6 +147,9 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.scale': 'Масштаб текста',
     'settings.console': 'Консоль отладки',
     'settings.proxyWww': 'Прокси www.sec.gov',
+    'settings.proxyWwwUrl': 'URL прокси www',
+    'settings.proxyDataUrl': 'URL прокси data',
+    'settings.proxyReset': 'Сбросить URL прокси',
     'settings.proxyData': 'Прокси data.sec.gov',
     'settings.clearCache': 'Очистить кэш компании',
     'guide.details': 'Подробности (README)',
@@ -386,6 +392,11 @@ const TC: Record<
     light: { line: '#d97706', fill: 'rgba(217,119,6,0.12)', text: 'text-amber-700' },
   },
 };
+
+const DEFAULT_WWW_PROXY = 'http://localhost:8011/proxy';
+const DEFAULT_DATA_PROXY = 'http://localhost:8012/proxy';
+const LS_WWW_PROXY = 'sec-proxy-www';
+const LS_DATA_PROXY = 'sec-proxy-data';
 
 const WWW_CANDIDATES = [8011, 8010, 8080, 3000, 8012].map((p) => `http://localhost:${p}/proxy`);
 const DATA_CANDIDATES = [8012, 8010, 8080, 3000, 8011].map((p) => `http://localhost:${p}/proxy`);
@@ -785,7 +796,16 @@ function App() {
   const [tkL, setTkL] = useState(false);
   const [wwwOk, setWwwOk] = useState(false);
   const [dataOk, setDataOk] = useState(!!cached?.company);
+  // Configured proxy bases (editable in Settings; persisted)
+  const [wwwProxyUrl, setWwwProxyUrl] = useState(
+    () => localStorage.getItem(LS_WWW_PROXY) || DEFAULT_WWW_PROXY,
+  );
+  const [dataProxyUrl, setDataProxyUrl] = useState(
+    () => localStorage.getItem(LS_DATA_PROXY) || DEFAULT_DATA_PROXY,
+  );
+  // Last successfully probed bases (may equal configured, or a fallback candidate)
   const [wwwBase, setWwwBase] = useState<string | null>(null);
+  const [dataBase, setDataBase] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>(prefs.mode || 'Y');
   const [view, setView] = useState<View>(prefs.view || 'C');
   const [dark, setDark] = useState(prefs.dark !== false);
@@ -842,6 +862,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
   }, [lang]);
+
+  useEffect(() => {
+    localStorage.setItem(LS_WWW_PROXY, wwwProxyUrl);
+  }, [wwwProxyUrl]);
+
+  useEffect(() => {
+    localStorage.setItem(LS_DATA_PROXY, dataProxyUrl);
+  }, [dataProxyUrl]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -909,11 +937,15 @@ function App() {
         }
       } catch {}
 
-      const cands = [...new Set([...WWW_CANDIDATES, ...UNIFIED])];
+      const cands = [
+        ...new Set(
+          [wwwProxyUrl, ...WWW_CANDIDATES, ...UNIFIED].filter(Boolean) as string[],
+        ),
+      ];
       const { base, res } = await probe(cands, '/files/company_tickers.json');
       setWwwOk(true);
       setWwwBase(base);
-      log(`✅ www proxy: ${base}`);
+      log(`✅ www proxy: ${base} (configured: ${wwwProxyUrl})`);
       data = await res.json();
       setTickers(data);
       log(`✅ ${Object.keys(data).length} tickers`);
@@ -979,12 +1011,20 @@ function App() {
       const cik = String(co.cik_str ?? co.cik).padStart(10, '0');
       log(`${sym} → CIK ${cik}`);
       const dataCands = [
-        ...new Set([...(wwwBase ? [] : []), ...DATA_CANDIDATES, ...UNIFIED]),
+        ...new Set(
+          [dataProxyUrl, dataBase || '', ...DATA_CANDIDATES, ...UNIFIED].filter(
+            Boolean,
+          ) as string[],
+        ),
       ];
-      const { base, res } = await probe(dataCands, `/api/xbrl/companyfacts/CIK${cik}.json`);
+      const { base, res } = await probe(
+        dataCands,
+        `/api/xbrl/companyfacts/CIK${cik}.json`,
+      );
       setDataOk(true);
-      log(`✅ data proxy: ${base}`);
-      if (wwwBase) log(`✅ www proxy: ${wwwBase}`);
+      setDataBase(base);
+      log(`✅ data proxy: ${base} (configured: ${dataProxyUrl})`);
+      if (wwwBase) log(`✅ www proxy: ${wwwBase} (configured: ${wwwProxyUrl})`);
       const raw = await res.json();
       const facts = normalizeFacts(raw);
       if (!facts?.['us-gaap']) throw new Error('No us-gaap in companyfacts');
@@ -1386,27 +1426,79 @@ function App() {
                   <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
                     {t('settings.data', lang)}
                   </div>
-                  <div className={`text-xs space-y-1.5 font-mono ${t2}`}>
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span title={t('settings.proxyWww', lang)}>www</span>
-                      <span className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>
+                      <label className={`text-xs ${t2}`} htmlFor="proxy-www-url">
+                        www
+                      </label>
+                      <span className={`text-xs font-mono ${wwwOk ? 'text-emerald-500' : 'text-red-500'}`}>
                         {wwwOk ? '● online' : '● offline'}
                       </span>
                     </div>
+                    <input
+                      id="proxy-www-url"
+                      type="text"
+                      value={wwwProxyUrl}
+                      onChange={(e) => setWwwProxyUrl(e.target.value.trim())}
+                      spellCheck={false}
+                      title={t('settings.proxyWwwUrl', lang)}
+                      placeholder={DEFAULT_WWW_PROXY}
+                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none focus:border-emerald-500`}
+                    />
                     <div className="flex items-center justify-between gap-2">
-                      <span title={t('settings.proxyData', lang)}>data</span>
-                      <span className={dataOk ? 'text-emerald-500' : 'text-red-500'}>
+                      <label className={`text-xs ${t2}`} htmlFor="proxy-data-url">
+                        data
+                      </label>
+                      <span className={`text-xs font-mono ${dataOk ? 'text-emerald-500' : 'text-red-500'}`}>
                         {dataOk ? '● online' : '● offline'}
                       </span>
                     </div>
-                    {wwwBase && (
-                      <div className={`text-[10px] break-all ${mt}`}>www: {wwwBase}</div>
-                    )}
-                    {company && (
-                      <div className={`text-[10px] break-all pt-1 ${mt}`}>
-                        {company.ticker} · {company.title} · CIK {company.cik}
+                    <input
+                      id="proxy-data-url"
+                      type="text"
+                      value={dataProxyUrl}
+                      onChange={(e) => setDataProxyUrl(e.target.value.trim())}
+                      spellCheck={false}
+                      title={t('settings.proxyDataUrl', lang)}
+                      placeholder={DEFAULT_DATA_PROXY}
+                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none focus:border-emerald-500`}
+                    />
+                    <div className={`text-[10px] space-y-0.5 font-mono ${mt}`}>
+                      <div>
+                        probed www: {wwwBase || '—'}
                       </div>
-                    )}
+                      <div>
+                        probed data: {dataBase || '—'}
+                      </div>
+                      {company && (
+                        <div className="pt-1 break-all">
+                          {company.ticker} · {company.title} · CIK {company.cik}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWwwProxyUrl(DEFAULT_WWW_PROXY);
+                        setDataProxyUrl(DEFAULT_DATA_PROXY);
+                      }}
+                      className={`w-full text-[11px] font-semibold py-1.5 rounded-lg border ${bdr} ${hR} ${t1}`}
+                      title={t('settings.proxyReset', lang)}
+                    >
+                      ↺ {t('settings.proxyReset', lang)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWwwOk(false);
+                        setDataOk(false);
+                        init();
+                      }}
+                      className={`w-full text-[11px] font-semibold py-1.5 rounded-lg border ${bdr} ${hR} ${t1}`}
+                      title={t('proxy.retry', lang)}
+                    >
+                      {t('proxy.retry', lang)}
+                    </button>
                   </div>
                   <div className="grid gap-2">
                     <pre
@@ -1467,29 +1559,47 @@ function App() {
             </div>
           </div>
 
-          <div className={`console-wrap ${showDebug && logs.length > 0 ? 'open' : ''}`}>
+          <div className={`console-wrap ${showDebug ? 'open' : ''}`}>
             <div className="console-inner">
-              <div className="pb-2 -mt-1">
+              <div className="pb-2 -mt-1 space-y-1">
                 <div
-                  className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-nowrap ${scCls}`}
+                  className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto ${scCls}`}
                 >
-                  {logs.map((l, i) => (
-                    <span key={i}>
-                      {i > 0 && <span className={dark ? 'text-slate-700' : 'text-slate-300'}> · </span>}
-                      <span
-                        className={
-                          l.startsWith('✅')
-                            ? 'text-emerald-500'
-                            : l.startsWith('❌')
-                              ? 'text-red-500'
-                              : mt
-                        }
-                      >
-                        {l}
-                      </span>
-                    </span>
-                  ))}
+                  <div className={mt}>
+                    cfg www: <span className={t1}>{wwwProxyUrl || DEFAULT_WWW_PROXY}</span>
+                    {' · '}
+                    cfg data: <span className={t1}>{dataProxyUrl || DEFAULT_DATA_PROXY}</span>
+                  </div>
+                  <div className={mt}>
+                    probed www: <span className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>{wwwBase || '—'}</span>
+                    {' · '}
+                    probed data:{' '}
+                    <span className={dataOk ? 'text-emerald-500' : 'text-red-500'}>{dataBase || '—'}</span>
+                    {company ? ` · ${company.ticker} CIK ${company.cik}` : ''}
+                  </div>
                 </div>
+                {logs.length > 0 && (
+                  <div
+                    className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-nowrap ${scCls}`}
+                  >
+                    {logs.map((l, i) => (
+                      <span key={i}>
+                        {i > 0 && <span className={dark ? 'text-slate-700' : 'text-slate-300'}> · </span>}
+                        <span
+                          className={
+                            l.startsWith('✅')
+                              ? 'text-emerald-500'
+                              : l.startsWith('❌')
+                                ? 'text-red-500'
+                                : mt
+                          }
+                        >
+                          {l}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

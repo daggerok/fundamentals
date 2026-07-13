@@ -1,21 +1,53 @@
-.idea/
-.DS_Store
-node_modules/
-dist/
+# Logs
+logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Dependency directories
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+# dotenv environment variable files
 .env
-.env.*
-!.env.example
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# parcel-bundler cache
 .cache
 .parcel-cache
+
+# output
+dist
+out
+
+.idea/
+.DS_Store
 .vscode/
+workspace-*
+SCRATCHPAD.md
+package-lock.json
 *.tmp
 *.bak
-SCRATCHPAD.md
+
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.python-version.local
+
 # pre-fetched data for GitHub Pages (commit these)
 !data/company_tickers.json
 !data/index.json
 !data/.gitkeep
-# ignore other json in data if any (e.g. backups)
 data/*.json.bak
 data/*.tmp
