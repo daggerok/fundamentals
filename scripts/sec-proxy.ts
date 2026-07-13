@@ -37,7 +37,7 @@ const PORT = Number(process.env.PORT ?? 8012);
 /** "data" | "www" | "both" — default "both" so one process covers runtime dual-proxy URLs */
 const MODE = (process.env.MODE ?? "both").toLowerCase();
 
-const UA = "fundamentals-demo contact@daggerok.github.io";
+const UA = "Maksim Kostromin daggerok@gmail.com";
 
 const PROXY_LABEL_WIDTH = 6;
 
