@@ -1,79 +1,41 @@
 name: CI
-
 on:
   push:
-    branches: [ master, 'architect-review/*', 'fix/*', 'chore/*', 'style/*' ]
   pull_request:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Cache Bun
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/package.json', '**/bun.lock') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/package.json') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-
-      - name: Install dependencies
-        run: bun install -E
-
-      - name: Typecheck proxy script (Bun)
-        run: bun build ./scripts/sec-proxy.ts --outdir=/tmp/sec-proxy-check --target=bun
-
-      - name: Build (Parcel)
-        run: bun run build
-
-      - name: Build for GitHub Pages
-        run: bun run build-github-pages
-
-      - name: List dist (debug)
-        run: |
-          echo "=== dist contents ==="
-          ls -la dist/ || echo "dist not created"
-          echo "=== dist/data ==="
-          ls -la dist/data/ || echo "no data"
-          echo "=== build success check ==="
-          ls dist/index.html dist/fundamentals.*.js 2>/dev/null && echo "Build artifacts OK" || echo "MISSING ARTIFACTS"
-
-  # Like daggerok/csv: on every master/CI run, verify latest npm modules still build
+      - run: bun install -E
+      - run: bun build ./scripts/sec-proxy.ts --outdir=/tmp/sec-proxy-check --target=bun
+      - run: bun run build
+      - run: bun run build-github-pages
   npm-check-updates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-ncu-${{ hashFiles('**/package.json') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/package.json') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-
-      - name: Bump deps to latest (ephemeral check — not committed)
-        run: bunx npm-check-updates -u
-
-      - name: Install updated dependencies
-        run: bun install
-
-      - name: Build with updated deps
-        run: bun run build
-
-      - name: Build GitHub Pages with updated deps
-        run: bun run build-github-pages
-
-      - name: Clean
-        run: bun run clean || true
+      - run: bunx npm-check-updates -u
+      - run: bun install
+      - run: bun run build
+      - run: bun run clean
+      - run: bun run build-github-pages

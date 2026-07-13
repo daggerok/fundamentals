@@ -1,131 +1,31 @@
 @import "tailwindcss";
-
-/* Tailwind v4: enable class-based dark mode (html.dark / .dark ancestor).
-   Without this, `dark:*` utilities never activate and tables look washed out. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root {
-  --od-bg: #f8fafc;
-  --od-fg: #0f172a;
-  --od-muted: #64748b;
-  --od-card: #ffffff;
-  --od-card-fg: #0f172a;
-  --od-border: #e2e8f0;
-  --od-header: #f1f5f9;
-  --od-row-hover: #f8fafc;
-  --od-divider: #e2e8f0;
-}
-
-html.dark,
-.dark {
-  --od-bg: #020617;
-  --od-fg: #f1f5f9;
-  --od-muted: #94a3b8;
-  --od-card: #1e293b;
-  --od-card-fg: #e2e8f0;
-  --od-border: #334155;
-  --od-header: #0f172a;
-  --od-row-hover: #33415566;
-  --od-divider: #334155;
-  color-scheme: dark;
-}
-
-html {
-  background: var(--od-bg);
-  color: var(--od-fg);
-}
-
-body {
-  background: var(--od-bg) !important;
-  color: var(--od-fg) !important;
-  min-height: 100vh;
-}
-
-.themed-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #64748b55 transparent;
-}
-
-.themed-scroll::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.themed-scroll::-webkit-scrollbar-thumb {
-  background: #64748b55;
-  border-radius: 3px;
-}
-
-/* Cards */
-.fund-card {
-  background: var(--od-card) !important;
-  color: var(--od-card-fg) !important;
-  border: 1px solid var(--od-border) !important;
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
-}
-
-html.dark .fund-card,
-.dark .fund-card {
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.45), 0 4px 6px -4px rgb(0 0 0 / 0.35);
-}
-
-.fund-card-header {
-  background: var(--od-header) !important;
-  border-bottom: 1px solid var(--od-border) !important;
-  color: var(--od-card-fg) !important;
-}
-
-.fund-table {
-  color: var(--od-card-fg);
-}
-
-.fund-table th {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--od-muted) !important;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.fund-table td {
-  white-space: nowrap;
-  color: var(--od-card-fg) !important;
-}
-
-.fund-table tbody tr {
-  border-color: var(--od-divider) !important;
-}
-
-.fund-table tbody tr:hover {
-  background: var(--od-row-hover) !important;
-}
-
-.fund-table .metric-unit {
-  color: var(--od-muted) !important;
-}
-
-.fund-metric {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out;
-}
-
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
+.animate-fade-in { animation: fadeIn 0.4s ease-out; }
 
-/* Range slider */
+.dark-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+.dark-scroll::-webkit-scrollbar-track { background: transparent; }
+.dark-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.dark-scroll { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+
+.light-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+.light-scroll::-webkit-scrollbar-track { background: transparent; }
+.light-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.light-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+
+.console-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease-out, opacity 0.25s ease-out;
+  opacity: 0;
+}
+.console-wrap.open { grid-template-rows: 1fr; opacity: 1; }
+.console-inner { overflow: hidden; }
+
 input[type='range'].scale-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -133,10 +33,7 @@ input[type='range'].scale-slider {
   border-radius: 2px;
   outline: none;
   cursor: pointer;
-  accent-color: #10b981;
-  background: #cbd5e1;
 }
-
 input[type='range'].scale-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -144,34 +41,23 @@ input[type='range'].scale-slider::-webkit-slider-thumb {
   height: 14px;
   border-radius: 50%;
   cursor: pointer;
-  background: #059669;
 }
-
 input[type='range'].scale-slider::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
   cursor: pointer;
   border: none;
-  background: #059669;
 }
+.dark input[type='range'].scale-slider { background: #334155; }
+.dark input[type='range'].scale-slider::-webkit-slider-thumb { background: #34d399; }
+.dark input[type='range'].scale-slider::-moz-range-thumb { background: #34d399; }
+html:not(.dark) input[type='range'].scale-slider { background: #cbd5e1; }
+html:not(.dark) input[type='range'].scale-slider::-webkit-slider-thumb { background: #059669; }
+html:not(.dark) input[type='range'].scale-slider::-moz-range-thumb { background: #059669; }
 
-html.dark input[type='range'].scale-slider,
-.dark input[type='range'].scale-slider {
-  background: #334155;
-}
-
-html.dark input[type='range'].scale-slider::-webkit-slider-thumb,
-.dark input[type='range'].scale-slider::-webkit-slider-thumb {
-  background: #34d399;
-}
-
-html.dark input[type='range'].scale-slider::-moz-range-thumb,
-.dark input[type='range'].scale-slider::-moz-range-thumb {
-  background: #34d399;
-}
-
-.console {
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
+html.dark, html.dark body {
+  background: #020617 !important;
+  color: #f1f5f9 !important;
+  color-scheme: dark;
 }
