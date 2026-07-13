@@ -945,7 +945,7 @@ function App() {
       const { base, res } = await probe(cands, '/files/company_tickers.json');
       setWwwOk(true);
       setWwwBase(base);
-      log(`✅ www proxy: ${base} (configured: ${wwwProxyUrl})`);
+      log(`✅ www proxy: ${base}`);
       data = await res.json();
       setTickers(data);
       log(`✅ ${Object.keys(data).length} tickers`);
@@ -1023,8 +1023,8 @@ function App() {
       );
       setDataOk(true);
       setDataBase(base);
-      log(`✅ data proxy: ${base} (configured: ${dataProxyUrl})`);
-      if (wwwBase) log(`✅ www proxy: ${wwwBase} (configured: ${wwwProxyUrl})`);
+      log(`✅ data proxy: ${base}`);
+      if (wwwBase) log(`✅ www proxy: ${wwwBase}`);
       const raw = await res.json();
       const facts = normalizeFacts(raw);
       if (!facts?.['us-gaap']) throw new Error('No us-gaap in companyfacts');
@@ -1561,45 +1561,79 @@ function App() {
 
           <div className={`console-wrap ${showDebug ? 'open' : ''}`}>
             <div className="console-inner">
-              <div className="pb-2 -mt-1 space-y-1">
+              <div className="pb-2 -mt-1">
                 <div
-                  className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto ${scCls}`}
+                  className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-nowrap ${scCls}`}
                 >
-                  <div className={mt}>
-                    cfg www: <span className={t1}>{wwwProxyUrl || DEFAULT_WWW_PROXY}</span>
-                    {' · '}
-                    cfg data: <span className={t1}>{dataProxyUrl || DEFAULT_DATA_PROXY}</span>
-                  </div>
-                  <div className={mt}>
-                    probed www: <span className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>{wwwBase || '—'}</span>
-                    {' · '}
-                    probed data:{' '}
-                    <span className={dataOk ? 'text-emerald-500' : 'text-red-500'}>{dataBase || '—'}</span>
-                    {company ? ` · ${company.ticker} CIK ${company.cik}` : ''}
-                  </div>
+                  {(() => {
+                    const parts: React.ReactNode[] = [];
+                    const push = (node: React.ReactNode) => {
+                      if (parts.length) {
+                        parts.push(
+                          <span key={`sep-${parts.length}`} className={dark ? 'text-slate-700' : 'text-slate-300'}>
+                            {' · '}
+                          </span>,
+                        );
+                      }
+                      parts.push(node);
+                    };
+
+                    if (company?.ticker && company?.cik) {
+                      push(
+                        <span key="cik" className={t1}>
+                          {company.ticker} → CIK {company.cik}
+                        </span>,
+                      );
+                    } else if ((ticker || '').trim()) {
+                      push(
+                        <span key="tk" className={mt}>
+                          {(ticker || '').trim().toUpperCase()}
+                        </span>,
+                      );
+                    }
+
+                    const dataUrl = dataBase || dataProxyUrl || DEFAULT_DATA_PROXY;
+                    const wwwUrl = wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY;
+                    push(
+                      <span key="data" className={dataOk ? 'text-emerald-500' : 'text-red-500'}>
+                        {dataOk ? '✅' : '❌'} data proxy: {dataUrl}
+                      </span>,
+                    );
+                    push(
+                      <span key="www" className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>
+                        {wwwOk ? '✅' : '❌'} www proxy: {wwwUrl}
+                      </span>,
+                    );
+
+                    const last = logs.length ? logs[logs.length - 1] : '';
+                    const done =
+                      last.startsWith('✅ Done') ||
+                      last === '✅ Done' ||
+                      (company && dataOk && !loading && !error);
+                    const failed = last.startsWith('❌') || (!!error && !loading);
+                    if (done) {
+                      push(
+                        <span key="done" className="text-emerald-500">
+                          ✅ Done
+                        </span>,
+                      );
+                    } else if (failed) {
+                      push(
+                        <span key="err" className="text-red-500">
+                          ❌ {error || last.replace(/^❌\s*/, '') || 'Error'}
+                        </span>,
+                      );
+                    } else if (loading || tkL) {
+                      push(
+                        <span key="load" className={mt}>
+                          …
+                        </span>,
+                      );
+                    }
+
+                    return parts.length ? parts : <span className={mt}>—</span>;
+                  })()}
                 </div>
-                {logs.length > 0 && (
-                  <div
-                    className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-nowrap ${scCls}`}
-                  >
-                    {logs.map((l, i) => (
-                      <span key={i}>
-                        {i > 0 && <span className={dark ? 'text-slate-700' : 'text-slate-300'}> · </span>}
-                        <span
-                          className={
-                            l.startsWith('✅')
-                              ? 'text-emerald-500'
-                              : l.startsWith('❌')
-                                ? 'text-red-500'
-                                : mt
-                          }
-                        >
-                          {l}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </div>
