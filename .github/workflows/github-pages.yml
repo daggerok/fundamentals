@@ -1,23 +1,17 @@
 name: GitHub Pages
-
 on:
   push:
-    branches: [master]
   workflow_dispatch:
   workflow_run:
     workflows: ["Update SEC data"]
     types: [completed]
-    branches: [master]
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
   group: "pages"
   cancel-in-progress: false
-
 jobs:
   deploy:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
@@ -26,19 +20,20 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout latest default branch
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: master
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
       - uses: oven-sh/setup-bun@v2
       - run: bun install -E
-      - run: time bun run build-github-pages
+      # Используем скрипт из вашего package.json
+      - run: bun run build-github-pages
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './dist' # Убедитесь, что parcel кладет файлы именно сюда
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
