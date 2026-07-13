@@ -1,5 +1,4 @@
 name: Dependency Updates
-
 on:
   workflow_dispatch:
     inputs:
@@ -11,15 +10,12 @@ on:
         description: Commit message
         required: true
         default: "chore(deps): update dependencies"
-
 permissions:
   contents: write
   actions: write
-
 concurrency:
   group: dependency-updates-${{ inputs.target_branch }}
   cancel-in-progress: false
-
 jobs:
   update-dependencies:
     runs-on: ubuntu-latest

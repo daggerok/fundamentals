@@ -155,3 +155,10 @@ fundamentals/
 
 - **CI** job `npm-check-updates` — на каждый push/PR проверяет, что `bunx npm-check-updates -u` + install + build проходят (без коммита).
 - **Ручной апгрейд и push**: Actions → **Dependency Updates** → Run workflow (ветка, commit message). Обновляет `package.json` / `bun.lock`, билдит, коммитит и пушит, затем триггерит GitHub Pages.
+
+---
+
+## UI
+
+UI mirrors [fundamentals-runtime](https://github.com/daggerok/fundamentals-runtime) (search bar header, dual proxy dots, console, colored section cards, ⊞/◔, scale slider, full metric set). **Difference:** EN/RU i18n via 🇺🇸/🇷🇺 pill.
+
