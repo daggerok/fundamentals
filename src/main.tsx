@@ -71,6 +71,44 @@ const translations: Record<Language, Record<string, string>> = {
     'theme.light': 'Light',
     'on': 'On',
     'off': 'Off',
+    'm.revenue': 'Revenue',
+    'm.costOfRevenue': 'Cost of Revenue',
+    'm.grossProfit': 'Gross Profit',
+    'm.rnd': 'R&D Expense',
+    'm.sga': 'SG&A Expense',
+    'm.operatingIncome': 'Operating Income',
+    'm.netIncome': 'Net Income',
+    'm.eps': 'EPS',
+    'm.grossMargin': 'Gross Margin',
+    'm.netMargin': 'Net Margin',
+    'm.opMargin': 'Operating Margin',
+    'm.ocf': 'Operating CF',
+    'm.capex': 'CapEx',
+    'm.depreciation': 'D&A',
+    'm.dividendsPaid': 'Dividends Paid',
+    'm.shareRepurchase': 'Share Buybacks',
+    'm.fcf': 'Free Cash Flow',
+    'm.assets': 'Total Assets',
+    'm.currentAssets': 'Current Assets',
+    'm.cash': 'Cash & Equiv.',
+    'm.receivables': 'Receivables',
+    'm.inventory': 'Inventory',
+    'm.ppe': 'PP&E',
+    'm.goodwill': 'Goodwill',
+    'm.intangibles': 'Intangibles',
+    'm.liabilities': 'Total Liabilities',
+    'm.currentLiabilities': 'Current Liabilities',
+    'm.payables': 'Accounts Payable',
+    'm.shortTermDebt': 'Short-term Debt',
+    'm.longTermDebt': 'Long-term Debt',
+    'm.equity': 'Equity',
+    'm.roe': 'ROE',
+    'm.roa': 'ROA',
+    'm.debtToEquity': 'Debt/Equity',
+    'm.currentRatio': 'Current Ratio',
+    'm.sharesOut': 'Shares Outstanding',
+    'm.revenuePerShare': 'Revenue/Share',
+    'm.fcfPerShare': 'FCF/Share',
   },
   ru: {
     'search.placeholder': 'Тикер или название компании…',
@@ -120,11 +158,54 @@ const translations: Record<Language, Record<string, string>> = {
     'theme.light': 'Светлая',
     'on': 'Вкл',
     'off': 'Выкл',
+    'm.revenue': 'Выручка',
+    'm.costOfRevenue': 'Себестоимость',
+    'm.grossProfit': 'Валовая прибыль',
+    'm.rnd': 'R&D расходы',
+    'm.sga': 'SG&A расходы',
+    'm.operatingIncome': 'Операционная прибыль',
+    'm.netIncome': 'Чистая прибыль',
+    'm.eps': 'EPS',
+    'm.grossMargin': 'Валовая маржа',
+    'm.netMargin': 'Чистая маржа',
+    'm.opMargin': 'Операционная маржа',
+    'm.ocf': 'Операционный CF',
+    'm.capex': 'CapEx',
+    'm.depreciation': 'Амортизация',
+    'm.dividendsPaid': 'Дивиденды',
+    'm.shareRepurchase': 'Обратный выкуп',
+    'm.fcf': 'Свободный CF',
+    'm.assets': 'Активы',
+    'm.currentAssets': 'Оборотные активы',
+    'm.cash': 'Денежные средства',
+    'm.receivables': 'Дебиторка',
+    'm.inventory': 'Запасы',
+    'm.ppe': 'Основные средства',
+    'm.goodwill': 'Гудвилл',
+    'm.intangibles': 'НМА',
+    'm.liabilities': 'Обязательства',
+    'm.currentLiabilities': 'Краткосрочные об-ва',
+    'm.payables': 'Кредиторка',
+    'm.shortTermDebt': 'Краткосрочный долг',
+    'm.longTermDebt': 'Долгосрочный долг',
+    'm.equity': 'Капитал',
+    'm.roe': 'ROE',
+    'm.roa': 'ROA',
+    'm.debtToEquity': 'Долг/Капитал',
+    'm.currentRatio': 'Текущая ликвидность',
+    'm.sharesOut': 'Акции в обращении',
+    'm.revenuePerShare': 'Выручка/акция',
+    'm.fcfPerShare': 'FCF/акция',
   },
 };
 
 function t(key: string, lang: Language): string {
   return translations[lang]?.[key] || translations.en[key] || key;
+}
+
+/** UI metric/chart names (not from SEC API). */
+function metricLabel(key: string, fallback: string, lang: Language): string {
+  return t(`m.${key}`, lang) || fallback || key;
 }
 
 const CON: Record<string, string[]> = {
@@ -598,7 +679,10 @@ const MiniChart = ({
       ref={cRef}
       className={`rounded-lg p-3 border ${dark ? 'bg-slate-900/50 border-slate-700/30' : 'bg-white/60 border-slate-200'}`}
     >
-      <div className={`mb-1 font-medium ${dark ? 'text-slate-400' : 'text-slate-600'}`} style={{ fontSize: fsT }}>
+      <div
+        className={`mb-1 font-medium text-center ${dark ? 'text-slate-400' : 'text-slate-600'}`}
+        style={{ fontSize: fsT }}
+      >
         {label}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
@@ -712,6 +796,7 @@ function App() {
   const [selIdx, setSelIdx] = useState(-1);
   const [scaleSlider, setScaleSlider] = useState(prefs.scaleSlider ?? DEFAULT_SCALE_SLIDER);
   const iRef = useRef<HTMLInputElement>(null);
+  const loadBtnRef = useRef<HTMLButtonElement>(null);
   const sRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -769,6 +854,15 @@ function App() {
   useEffect(() => {
     if (factsCache) setPd(proc(normalizeFacts(factsCache), mode));
   }, [mode, factsCache]);
+
+  // After tickers load, enable load button focus if input already has a symbol
+  useEffect(() => {
+    if (!tickers) return;
+    const has = !!(ticker || '').trim();
+    if (has && document.activeElement === document.body) {
+      loadBtnRef.current?.focus();
+    }
+  }, [tickers, ticker]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -834,6 +928,23 @@ function App() {
 
   useEffect(() => {
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On open: if ticker is non-empty, focus load button so Enter/Space runs search;
+  // otherwise focus the input for typing.
+  useEffect(() => {
+    // wait until proxies/tickers init settles a tick
+    const id = window.setTimeout(() => {
+      const has = !!(ticker || '').trim();
+      if (has) {
+        loadBtnRef.current?.focus();
+      } else {
+        iRef.current?.focus();
+      }
+    }, 50);
+    return () => window.clearTimeout(id);
+    // only on first mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -912,6 +1023,12 @@ function App() {
   };
   const hIF = () => {
     if (sug.length) setShowSug(true);
+    // Select whole ticker so typing replaces it
+    requestAnimationFrame(() => {
+      try {
+        iRef.current?.select();
+      } catch {}
+    });
   };
   const selS = (tk: string) => {
     setTicker(tk);
@@ -1025,6 +1142,10 @@ function App() {
                 value={ticker}
                 onChange={hIC}
                 onFocus={hIF}
+                onClick={(e) => {
+                  // Select all on click so a new symbol can be typed immediately
+                  (e.target as HTMLInputElement).select();
+                }}
                 onKeyDown={hKD}
                 placeholder={t('search.placeholder', lang)}
                 title={t('tip.search', lang)}
@@ -1063,6 +1184,7 @@ function App() {
 
             {/* 4. Search / load */}
             <button
+              ref={loadBtnRef}
               type="button"
               onClick={() => {
                 setShowSug(false);
@@ -1484,7 +1606,7 @@ bun run serve:app`}</pre>
                           data={m.series}
                           color={clr}
                           unit={m.unit}
-                          label={m.label}
+                          label={metricLabel(m.key, m.label, lang)}
                           dark={dark}
                           scale={scale}
                         />
