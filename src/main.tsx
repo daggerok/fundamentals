@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Moon, Sun, RefreshCw, Settings2 } from 'lucide-react';
+import { RefreshCw, Settings2 } from 'lucide-react';
 
 type Language = 'en' | 'ru';
 
@@ -330,6 +330,54 @@ const MiniChart = ({ data, label, unit, dark }: any) => {
   );
 };
 
+/** Segmented control — same style as fundamentals-runtime Pill */
+type PillOption = string | { k: string; l: string };
+
+function Pill({
+  value,
+  options,
+  onChange,
+  dark,
+  title,
+}: {
+  value: string;
+  options: PillOption[];
+  onChange: (k: string) => void;
+  dark: boolean;
+  title?: string;
+}) {
+  return (
+    <div
+      title={title}
+      className={`flex-shrink-0 flex items-center rounded-lg p-0.5 border ${
+        dark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+      }`}
+    >
+      {options.map((opt) => {
+        const k = typeof opt === 'string' ? opt : opt.k;
+        const l = typeof opt === 'string' ? opt : opt.l;
+        const active = value === k;
+        return (
+          <button
+            key={k}
+            type="button"
+            onClick={() => onChange(k)}
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+              active
+                ? 'bg-emerald-500 text-white shadow-sm'
+                : dark
+                  ? 'text-slate-400 hover:text-slate-200'
+                  : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {l}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function StatusDot({ ok, label }: { ok: boolean | null; label: string }) {
   const color =
     ok === true ? 'bg-emerald-500' : ok === false ? 'bg-red-500' : 'bg-slate-400 animate-pulse';
@@ -537,7 +585,7 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <span className="font-bold text-xl">{t('app.brand', lang)}</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+            <span className="text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               EDGAR
             </span>
             <div className="hidden sm:flex items-center gap-3 ml-2">
@@ -546,52 +594,87 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex border border-slate-300 dark:border-slate-700 rounded-lg text-sm overflow-hidden">
-              <button
-                onClick={() => setMode('Y')}
-                className={`px-3 py-1 ${mode === 'Y' ? 'bg-emerald-600 text-white' : ''}`}
-              >
-                {t('mode.y', lang)}
-              </button>
-              <button
-                onClick={() => setMode('Q')}
-                className={`px-3 py-1 ${mode === 'Q' ? 'bg-emerald-600 text-white' : ''}`}
-              >
-                {t('mode.q', lang)}
-              </button>
-            </div>
-            <button
-              onClick={() => setView((v) => (v === 'table' ? 'charts' : 'table'))}
-              className="px-3 py-1 text-sm border rounded-lg"
-            >
-              {view === 'table' ? t('view.charts', lang) : t('view.table', lang)}
-            </button>
-            <button
-              onClick={() => setLang((l) => (l === 'en' ? 'ru' : 'en'))}
-              className="px-2 py-1 text-sm border rounded-lg font-mono"
-              title="Language"
-            >
-              {lang.toUpperCase()}
-            </button>
+            {/* Mode Y/Q — fundamentals-runtime Pill */}
+            <Pill
+              value={mode}
+              options={[
+                { k: 'Y', l: lang === 'ru' ? 'Г' : 'Y' },
+                { k: 'Q', l: lang === 'ru' ? 'К' : 'Q' },
+              ]}
+              onChange={(k) => setMode(k as 'Y' | 'Q')}
+              dark={dark}
+              title={lang === 'ru' ? 'Годовой / Квартальный' : 'Annual / Quarterly'}
+            />
+            {/* View table/charts — runtime uses ⊞ / ◔ */}
+            <Pill
+              value={view === 'table' ? 'T' : 'C'}
+              options={[
+                { k: 'T', l: '⊞' },
+                { k: 'C', l: '◔' },
+              ]}
+              onChange={(k) => setView(k === 'C' ? 'charts' : 'table')}
+              dark={dark}
+              title={lang === 'ru' ? 'Таблица / Графики' : 'Table / Charts'}
+            />
+            {/* Language EN/RU — same Pill style */}
+            <Pill
+              value={lang}
+              options={[
+                { k: 'en', l: 'EN' },
+                { k: 'ru', l: 'RU' },
+              ]}
+              onChange={(k) => setLang(k as Language)}
+              dark={dark}
+              title="Language / Язык"
+            />
             <button
               onClick={() => setShowProxyHelp((v) => !v)}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${
+                showProxyHelp
+                  ? 'bg-emerald-500/15 text-emerald-500'
+                  : dark
+                    ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+              }`}
               title={t('settings.proxy', lang)}
             >
-              <Settings2 size={17} />
+              <Settings2 size={16} />
             </button>
             <button
               onClick={() => setDark(!dark)}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              className={`flex-shrink-0 text-sm px-2 py-1.5 rounded transition-colors ${
+                dark
+                  ? 'text-yellow-400 hover:text-yellow-300'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title={dark ? 'Light' : 'Dark'}
             >
-              {dark ? <Sun size={17} /> : <Moon size={17} />}
+              {dark ? '☀' : '🌙'}
             </button>
             <button
               onClick={clearCache}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${
+                dark
+                  ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+              }`}
+              title={lang === 'ru' ? 'Сбросить кэш' : 'Clear cache'}
             >
-              <RefreshCw size={17} />
+              <RefreshCw size={16} />
             </button>
+            <a
+              href="https://github.com/daggerok/fundamentals/tree/master/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex-shrink-0 text-xs px-2 py-1 rounded transition-colors ${
+                dark
+                  ? 'text-slate-400 hover:text-slate-200'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title={lang === 'ru' ? 'Документация' : 'Documentation'}
+            >
+              📄 docs
+            </a>
           </div>
         </div>
       </header>
@@ -684,9 +767,9 @@ function App() {
               if (!all.length) return null;
 
               return (
-                <div key={i} className="fund-card rounded-3xl p-5 border">
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="font-semibold text-lg">{section.title}</div>
+                <div key={i} className="fund-card rounded-xl overflow-hidden shadow-lg border animate-fade-in">
+                  <div className="flex justify-between items-center gap-3 px-5 py-3 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/40">
+                    <div className="font-semibold text-sm sm:text-base">{section.title}</div>
                     <input
                       type="range"
                       min="0"
@@ -694,8 +777,10 @@ function App() {
                       value={scaleSlider}
                       onChange={(e) => setScaleSlider(+e.target.value)}
                       className="scale-slider w-20"
+                      title={lang === 'ru' ? 'Масштаб' : 'Scale'}
                     />
                   </div>
+                  <div className="p-4">
 
                   {view === 'charts' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -710,14 +795,16 @@ function App() {
                       ))}
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto themed-scroll">
                       <table
                         className="fund-table w-full text-sm"
                         style={{ fontSize: `${Math.round(13 * scale)}px` }}
                       >
                         <thead>
                           <tr>
-                            <th className="text-left py-2">Metric</th>
+                            <th className="text-left py-2 sticky left-0 bg-inherit">
+                              {lang === 'ru' ? 'Метрика' : 'Metric'}
+                            </th>
                             {processed.periodKeys.map((pk: any, j: number) => (
                               <th key={j} className="text-right px-2">
                                 {processed.getLabel(pk)}
@@ -727,13 +814,13 @@ function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {all.map((m) => (
-                            <tr key={m.key}>
-                              <td className="py-1.5 pr-3 font-medium">
+                            <tr key={m.key} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                              <td className="py-1.5 pr-3 font-medium sticky left-0 bg-inherit">
                                 {m.label}{' '}
                                 <span className="text-xs text-slate-400">({m.unit})</span>
                               </td>
                               {m.series.map((d: any, j: number) => (
-                                <td key={j} className="px-2 py-1.5 text-right font-mono">
+                                <td key={j} className="px-2 py-1.5 text-right font-mono tabular-nums">
                                   {fV(d.value, m.unit)}
                                 </td>
                               ))}
@@ -743,6 +830,7 @@ function App() {
                       </table>
                     </div>
                   )}
+                  </div>
                 </div>
               );
             })}
