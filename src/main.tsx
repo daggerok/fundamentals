@@ -169,12 +169,34 @@ const SEC_SECTIONS = [
   },
 ];
 
+/** Pick first available unit series for a GAAP concept (runtime-compatible). */
+function unitSeries(concept: any): any[] | null {
+  if (!concept?.units) return null;
+  const u = concept.units;
+  return u.USD || u['USD/shares'] || u.shares || u.pure || (Object.values(u)[0] as any[]) || null;
+}
+
+/**
+ * Normalize SEC companyfacts payload → inner `facts` object with `us-gaap`.
+ * Full shape: { cik, entityName, facts: { "us-gaap": {...} } }
+ * fundamentals-runtime: const facts = (await res.json()).facts
+ */
+function normalizeFacts(raw: any): any {
+  if (!raw) return null;
+  if (raw['us-gaap']) return raw; // already inner
+  if (raw.facts) return raw.facts;
+  return raw;
+}
+
+/**
+ * Extract metric points from companyfacts.facts (object that contains us-gaap).
+ */
 function exM(facts: any, keys: string[], mode: 'Y' | 'Q') {
-  if (!facts?.['us-gaap']) return [];
-  const g = facts['us-gaap'];
+  const g = facts?.['us-gaap'] || facts?.facts?.['us-gaap'];
+  if (!g) return [];
   let r: any[] = [];
   for (const k of keys) {
-    const s = g[k]?.units?.USD || g[k]?.units?.['USD/shares'];
+    const s = unitSeries(g[k]);
     if (s) {
       const filtered =
         mode === 'Y'
@@ -184,13 +206,17 @@ function exM(facts: any, keys: string[], mode: 'Y' | 'Q') {
     }
   }
   const m = new Map();
+  const fpOrder: Record<string, number> = { FY: 4, Q4: 4, Q3: 3, Q2: 2, Q1: 1 };
   r.sort((a, b) => new Date(b.filed).getTime() - new Date(a.filed).getTime()).forEach(
     (x: any) => {
       const key = mode === 'Y' ? x.fy : `${x.fy}-${x.fp}`;
       if (!m.has(key)) m.set(key, x);
     },
   );
-  return Array.from(m.values()).sort((a: any, b: any) => b.fy - a.fy);
+  return Array.from(m.values()).sort((a: any, b: any) => {
+    if (b.fy !== a.fy) return b.fy - a.fy;
+    return (fpOrder[b.fp] || 0) - (fpOrder[a.fp] || 0);
+  });
 }
 
 function proc(facts: any, mode: 'Y' | 'Q') {
@@ -445,17 +471,29 @@ function App() {
       setDataBase(dBase);
       setDataOk(true);
       log(`✅ data proxy: ${dBase}`);
-      const factsJson = await factsRes.json();
-
-      const comp = { ticker: s, title: found.title, cik };
-      setCompany(comp);
-      setFacts(factsJson);
-      try {
-        localStorage.setItem('sec-last', JSON.stringify({ company: comp, facts: factsJson }));
-      } catch {
-        /* quota */
+      // CRITICAL: companyfacts JSON is { cik, entityName, facts: { "us-gaap": ... } }
+      // fundamentals-runtime does: const facts = (await res.json()).facts
+      const raw = await factsRes.json();
+      const factsInner = normalizeFacts(raw);
+      if (!factsInner?.['us-gaap']) {
+        throw new Error(
+          'companyfacts payload has no us-gaap (unexpected shape). Top keys: ' +
+            Object.keys(raw || {}).join(', '),
+        );
       }
-      log('✅ company facts loaded');
+
+      const title = found.title || raw?.entityName || s;
+      const comp = { ticker: s, title, cik };
+      setCompany(comp);
+      setFacts(factsInner);
+      try {
+        // Store inner facts only (correct shape for restore; smaller)
+        localStorage.setItem('sec-last', JSON.stringify({ company: comp, facts: factsInner }));
+      } catch {
+        /* quota — full companyfacts can be multi-MB */
+      }
+      const nConcepts = Object.keys(factsInner['us-gaap'] || {}).length;
+      log(`✅ company facts loaded (${nConcepts} us-gaap concepts)`);
     } catch (e: any) {
       setWwwOk((v) => (v === true ? v : false));
       setDataOk((v) => (v === true ? v : false));
@@ -484,7 +522,7 @@ function App() {
         const p = JSON.parse(last);
         if (p.company && p.facts) {
           setCompany(p.company);
-          setFacts(p.facts);
+          setFacts(normalizeFacts(p.facts));
           setTicker(p.company.ticker);
         }
       } catch {
@@ -710,6 +748,32 @@ function App() {
             })}
           </div>
         )}
+
+        {company && !loading && !processed && (
+          <div className="text-center py-16 text-slate-500">
+            {lang === 'ru'
+              ? 'Данные загружены, но метрики не извлечены (проверьте us-gaap / период).'
+              : 'Facts loaded but no metrics extracted (check us-gaap tags / period).'}
+          </div>
+        )}
+
+        {company && !loading && processed && (() => {
+          const any =
+            Object.values(processed.metricSeries || {}).some((series: any) =>
+              series?.some((d: any) => d.value != null),
+            ) ||
+            Object.values(processed.computedSeries || {}).some((series: any) =>
+              series?.some((d: any) => d.value != null),
+            );
+          if (any) return null;
+          return (
+            <div className="text-center py-16 text-slate-500">
+              {lang === 'ru'
+                ? 'Нет точек для выбранного режима (Annual/Quarterly). Переключите режим или тикер.'
+                : 'No data points for the selected mode (Annual/Quarterly). Try switching mode or ticker.'}
+            </div>
+          );
+        })()}
 
         {!company && !loading && (
           <div className="text-center py-20 text-slate-500">{t('no.data', lang)}</div>
