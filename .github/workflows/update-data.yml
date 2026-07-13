@@ -24,6 +24,21 @@ jobs:
           curl -sL -H "User-Agent: fundamentals-demo contact@daggerok.github.io" \
             https://www.sec.gov/files/company_tickers.json > data/company_tickers.json
           echo "Fetched $(jq length data/company_tickers.json) tickers"
+          # index.json for options-desk-style manifest
+          python3 - <<'PY'
+          import json, datetime
+          from pathlib import Path
+          p = Path("data/company_tickers.json")
+          tickers = json.loads(p.read_text())
+          index = {
+            "files": {"company_tickers.json": datetime.datetime.now(datetime.timezone.utc).isoformat()},
+            "count": len(tickers),
+            "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "names": {},
+            "no_options": {},
+          }
+          Path("data/index.json").write_text(json.dumps(index, indent=2) + "\n")
+          PY
 
       - name: Commit refreshed data
         run: |

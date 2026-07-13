@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: bun install -E
 
+      - name: Typecheck proxy script (Bun)
+        run: bun build ./scripts/sec-proxy.ts --outdir=/tmp/sec-proxy-check --target=bun
+
       - name: Build (Parcel)
         run: bun run build
 

@@ -1,7 +1,9 @@
 {
-  "files": {},
-  "count": 0,
-  "generated": "2026-07-13",
+  "files": {
+    "company_tickers.json": "stub"
+  },
+  "count": 8,
+  "generated": "stub-for-dev-full-list-via-proxy-or-update-data-workflow",
   "names": {},
-  "no_options": []
+  "no_options": {}
 }
