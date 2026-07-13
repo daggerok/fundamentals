@@ -42,6 +42,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.search': 'Search ticker',
     'tip.load': 'Load company data',
     'tip.proxy': 'Proxy status (www / data)',
+    'tip.proxyToggle': 'Toggle debug console / proxy log',
     'settings.title': 'Settings',
     'settings.display': 'Display',
     'settings.data': 'Data & proxy',
@@ -87,6 +88,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.search': 'Поиск тикера',
     'tip.load': 'Загрузить данные компании',
     'tip.proxy': 'Статус прокси (www / data)',
+    'tip.proxyToggle': 'Консоль прокси / отладка',
     'settings.title': 'Настройки',
     'settings.display': 'Отображение',
     'settings.data': 'Данные и прокси',
@@ -911,7 +913,146 @@ function App() {
       <div className={`sticky top-0 z-50 ${bg} backdrop-blur-md border-b ${bdr}`}>
         <div className="px-4 xl:px-8">
           <div className="flex items-center gap-2 sm:gap-3 py-3">
-            {/* 1. Theme */}
+            {/* 1. Proxy / console toggle (prev runtime left control) */}
+            <button
+              type="button"
+              onClick={() => setShowDebug((p) => !p)}
+              title={t('tip.proxyToggle', lang)}
+              aria-label={t('tip.proxyToggle', lang)}
+              className={`flex-shrink-0 text-xs px-2 py-1.5 rounded-lg transition-colors ${
+                showDebug
+                  ? dark
+                    ? 'bg-slate-700 text-slate-300'
+                    : 'bg-slate-200 text-slate-600'
+                  : dark
+                    ? 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'
+                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              ⌘
+            </button>
+
+            {/* 2. Proxy online indicators */}
+            <div
+              className="flex gap-1.5 flex-shrink-0"
+              title={t('tip.proxy', lang)}
+              aria-label={t('tip.proxy', lang)}
+            >
+              <div className={`h-2.5 w-2.5 rounded-full ${wwwOk ? dotOn : 'bg-red-500'}`} />
+              <div
+                className={`h-2.5 w-2.5 rounded-full ${
+                  dataOk ? dotOn : tkL || loading ? 'bg-yellow-400 animate-pulse' : dotOff
+                }`}
+              />
+            </div>
+
+            {/* 3. Search input */}
+            <div className="flex-1 min-w-0 relative" title={t('tip.search', lang)}>
+              <input
+                ref={iRef}
+                type="text"
+                value={ticker}
+                onChange={hIC}
+                onFocus={hIF}
+                onKeyDown={hKD}
+                placeholder={t('search.placeholder', lang)}
+                title={t('tip.search', lang)}
+                aria-label={t('tip.search', lang)}
+                className={`w-full ${inp} border rounded-lg px-3 py-2 font-mono font-bold text-sm focus:outline-none focus:border-emerald-500 transition-colors uppercase`}
+                disabled={!tickers}
+              />
+              {showSug && sug.length > 0 && (
+                <div
+                  ref={sRef}
+                  className={`absolute top-full left-0 right-0 mt-1 ${sugBg} border rounded-lg overflow-hidden z-50 max-w-xl`}
+                >
+                  {sug.map((s, i) => (
+                    <button
+                      key={s.ticker}
+                      type="button"
+                      onClick={() => selS(s.ticker)}
+                      onMouseEnter={() => setSelIdx(i)}
+                      className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
+                        i === selIdx ? sugH : sugH2
+                      }`}
+                    >
+                      <span
+                        className={`font-mono font-bold text-sm w-14 flex-shrink-0 ${
+                          dark ? 'text-emerald-400' : 'text-emerald-700'
+                        }`}
+                      >
+                        {s.ticker}
+                      </span>
+                      <span className={`text-xs truncate ${t2}`}>{s.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 4. Search / load */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowSug(false);
+                iRef.current?.blur();
+                search(ticker);
+              }}
+              disabled={loading || !tickers}
+              title={t('tip.load', lang)}
+              aria-label={t('tip.load', lang)}
+              className="flex-shrink-0 flex items-center bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-3 sm:px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40"
+            >
+              {loading ? (
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2.5}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+                  />
+                </svg>
+              )}
+            </button>
+
+            {/* 5. Y / Q */}
+            <div title={t('tip.mode', lang)} className="flex-shrink-0">
+              <Pill
+                value={mode}
+                options={[
+                  { k: 'Y', l: 'Y' },
+                  { k: 'Q', l: 'Q' },
+                ]}
+                onChange={(k) => setMode(k as Mode)}
+                dark={dark}
+                title={t('tip.mode', lang)}
+              />
+            </div>
+
+            {/* 6. Tables / charts */}
+            <div title={t('tip.view', lang)} className="flex-shrink-0">
+              <Pill
+                value={view}
+                options={[
+                  { k: 'C', l: '◔' },
+                  { k: 'T', l: '⊞' },
+                ]}
+                onChange={(k) => setView(k as View)}
+                dark={dark}
+                title={t('tip.view', lang)}
+              />
+            </div>
+
+            {/* 7. Theme */}
             <button
               type="button"
               onClick={() => setDark((d) => !d)}
@@ -924,7 +1065,7 @@ function App() {
               {dark ? '☀️' : '🌙'}
             </button>
 
-            {/* 2. i18n (default EN) */}
+            {/* 8. i18n */}
             <div title={t('tip.lang', lang)} className="flex-shrink-0">
               <Pill
                 value={lang}
@@ -938,7 +1079,7 @@ function App() {
               />
             </div>
 
-            {/* 3. Settings (mobile-first: all config lives here too) */}
+            {/* 9. Settings */}
             <div className="relative flex-shrink-0" ref={settingsRef}>
               <button
                 type="button"
@@ -960,7 +1101,7 @@ function App() {
               </button>
               {showSettings && (
                 <div
-                  className={`absolute left-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
+                  className={`absolute right-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className={`font-bold text-sm ${t1}`}>⚙️ {t('settings.title', lang)}</div>
@@ -1110,124 +1251,6 @@ function App() {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* 4. Charts / table (default charts) */}
-            <div title={t('tip.view', lang)} className="flex-shrink-0">
-              <Pill
-                value={view}
-                options={[
-                  { k: 'C', l: '◔' },
-                  { k: 'T', l: '⊞' },
-                ]}
-                onChange={(k) => setView(k as View)}
-                dark={dark}
-                title={t('tip.view', lang)}
-              />
-            </div>
-
-            {/* 5. Y / Q (default Y) */}
-            <div title={t('tip.mode', lang)} className="flex-shrink-0">
-              <Pill
-                value={mode}
-                options={[
-                  { k: 'Y', l: 'Y' },
-                  { k: 'Q', l: 'Q' },
-                ]}
-                onChange={(k) => setMode(k as Mode)}
-                dark={dark}
-                title={t('tip.mode', lang)}
-              />
-            </div>
-
-            {/* 6. Search (grows) */}
-            <div className="flex-1 min-w-0 relative" title={t('tip.search', lang)}>
-              <input
-                ref={iRef}
-                type="text"
-                value={ticker}
-                onChange={hIC}
-                onFocus={hIF}
-                onKeyDown={hKD}
-                placeholder={t('search.placeholder', lang)}
-                title={t('tip.search', lang)}
-                aria-label={t('tip.search', lang)}
-                className={`w-full ${inp} border rounded-lg px-3 py-2 font-mono font-bold text-sm focus:outline-none focus:border-emerald-500 transition-colors uppercase`}
-                disabled={!tickers}
-              />
-              {showSug && sug.length > 0 && (
-                <div
-                  ref={sRef}
-                  className={`absolute top-full left-0 right-0 mt-1 ${sugBg} border rounded-lg overflow-hidden z-50 max-w-xl`}
-                >
-                  {sug.map((s, i) => (
-                    <button
-                      key={s.ticker}
-                      type="button"
-                      onClick={() => selS(s.ticker)}
-                      onMouseEnter={() => setSelIdx(i)}
-                      className={`w-full text-left px-3 py-2 flex items-center gap-3 transition-colors ${
-                        i === selIdx ? sugH : sugH2
-                      }`}
-                    >
-                      <span
-                        className={`font-mono font-bold text-sm w-14 flex-shrink-0 ${
-                          dark ? 'text-emerald-400' : 'text-emerald-700'
-                        }`}
-                      >
-                        {s.ticker}
-                      </span>
-                      <span className={`text-xs truncate ${t2}`}>{s.title}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowSug(false);
-                iRef.current?.blur();
-                search(ticker);
-              }}
-              disabled={loading || !tickers}
-              title={t('tip.load', lang)}
-              aria-label={t('tip.load', lang)}
-              className="flex-shrink-0 flex items-center bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-3 sm:px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40"
-            >
-              {loading ? (
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2.5}
-                  stroke="currentColor"
-                  className="w-4 h-4"
-                  aria-hidden
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-                  />
-                </svg>
-              )}
-            </button>
-
-            {/* Compact proxy status (also in settings) */}
-            <div
-              className="hidden xs:flex sm:flex gap-1.5 flex-shrink-0"
-              title={t('tip.proxy', lang)}
-            >
-              <div className={`h-2.5 w-2.5 rounded-full ${wwwOk ? dotOn : 'bg-red-500'}`} />
-              <div
-                className={`h-2.5 w-2.5 rounded-full ${
-                  dataOk ? dotOn : tkL || loading ? 'bg-yellow-400 animate-pulse' : dotOff
-                }`}
-              />
             </div>
           </div>
 
