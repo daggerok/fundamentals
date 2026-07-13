@@ -172,6 +172,14 @@ Same pattern as [options-desk](https://github.com/daggerok/options-desk):
 ```bash
 # requires uv (https://docs.astral.sh/uv/)
 uv run python scripts/fetch_data.py
+
+SEC blocks generic User-Agents (HTTP 403). The script defaults to a descriptive
+contact UA. Override if needed:
+
+```bash
+SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fetch_data.py
+```
+
 # or:
 bun run data:fetch
 ```

@@ -28,7 +28,7 @@
 // Lock this to your site in production, e.g. "https://daggerok.github.io".
 const ALLOW_ORIGIN = "*";
 
-const UA = "fundamentals-demo contact@daggerok.github.io";
+const UA = "Maksim Kostromin daggerok@gmail.com";
 
 function cors() {
   return {
