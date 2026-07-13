@@ -21,7 +21,7 @@ jobs:
       PYTHONUNBUFFERED: "1"
       MAX_FETCHES: "40"
       MAX_RETRIES: "3"
-      REQUEST_SLEEP: "0.25"
+      REQUEST_SLEEP: "1"
       SKIP_FRESH_HOURS: "24"
       # UNIVERSE_SIZE: "0"   # 0 = all company_tickers; set e.g. 500 to limit
       # TICKERS: "AAPL MSFT" # optional explicit list
