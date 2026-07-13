@@ -1648,7 +1648,7 @@ bun run serve:app`}</pre>
                               className={`px-4 font-medium ${t1} sticky left-0 z-10 ${sB} whitespace-nowrap`}
                               style={{ paddingTop: tblCellPy, paddingBottom: tblCellPy }}
                             >
-                              {m.label}{' '}
+                              {metricLabel(m.key, m.label, lang)}{' '}
                               <span className={`text-xs ${mt}`}>({m.unit})</span>
                             </td>
                             {m.series.map((d: any, j: number) => (
