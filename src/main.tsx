@@ -19,6 +19,9 @@ const LS_P = 'sec-dash-prefs';
 const LS_C = 'sec-dash-cache';
 const LS_LANG = 'sec-lang';
 
+const README_QUICKSTART =
+  'https://github.com/daggerok/fundamentals/blob/master/README.md#%D0%B1%D1%8B%D1%81%D1%82%D1%80%D1%8B%D0%B9-%D1%81%D1%82%D0%B0%D1%80%D1%82--quick-start';
+
 const translations: Record<Language, Record<string, string>> = {
   en: {
     'search.placeholder': 'Ticker or company name…',
@@ -51,11 +54,14 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.lang': 'Language',
     'settings.view': 'View',
     'settings.mode': 'Period',
-    'settings.scale': 'Table / chart scale',
+    'settings.scale': 'Text scale',
     'settings.console': 'Debug console',
     'settings.proxyWww': 'www.sec.gov proxy',
     'settings.proxyData': 'data.sec.gov proxy',
     'settings.clearCache': 'Clear cached company',
+    'settings.refresh': 'Refresh current ticker',
+    'guide.details': 'Setup details (README)',
+    'cache.restored': 'Restored from cache',
     'settings.close': 'Close',
     'view.charts': 'Charts',
     'view.table': 'Table',
@@ -97,11 +103,14 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.lang': 'Язык',
     'settings.view': 'Вид',
     'settings.mode': 'Период',
-    'settings.scale': 'Масштаб таблицы / графиков',
+    'settings.scale': 'Масштаб текста',
     'settings.console': 'Консоль отладки',
     'settings.proxyWww': 'Прокси www.sec.gov',
     'settings.proxyData': 'Прокси data.sec.gov',
     'settings.clearCache': 'Очистить кэш компании',
+    'settings.refresh': 'Обновить текущий тикер',
+    'guide.details': 'Подробности (README)',
+    'cache.restored': 'Восстановлено из кэша',
     'settings.close': 'Закрыть',
     'view.charts': 'Графики',
     'view.table': 'Таблица',
@@ -323,8 +332,23 @@ function lc(): any {
 function sc(c: any) {
   try {
     const j = JSON.stringify(c);
-    if (j.length < 4 * 1024 * 1024) localStorage.setItem(LS_C, j);
-  } catch {}
+    // Prefer full cache; if over ~4MB quota, keep company-only so UI can restore shell + offer refresh
+    if (j.length < 4 * 1024 * 1024) {
+      localStorage.setItem(LS_C, j);
+      return;
+    }
+    localStorage.setItem(
+      LS_C,
+      JSON.stringify({ company: c?.company || null, facts: null, partial: true }),
+    );
+  } catch {
+    try {
+      localStorage.setItem(
+        LS_C,
+        JSON.stringify({ company: c?.company || null, facts: null, partial: true }),
+      );
+    } catch {}
+  }
 }
 function cc() {
   try {
@@ -700,8 +724,14 @@ function App() {
 
   useEffect(() => {
     if (cached?.facts && cached?.company) {
-      log(`Restored ${cached.company.ticker}`);
-      setPd(proc(normalizeFacts(cached.facts), mode));
+      const facts = normalizeFacts(cached.facts);
+      const comp = cached.company;
+      setCompany(comp);
+      setFactsCache(facts);
+      setTicker(comp.ticker || prefs.ticker || 'AAPL');
+      setPd(proc(facts, mode));
+      setDataOk(true);
+      log(`✅ Restored ${comp.ticker} (cache)`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -709,6 +739,20 @@ function App() {
   useEffect(() => {
     sp({ ticker, mode, view, dark, showDebug, scaleSlider });
   }, [ticker, mode, view, dark, showDebug, scaleSlider]);
+
+  // Keep last loaded companyfacts in localStorage across reloads/close
+  useEffect(() => {
+    if (company && factsCache) sc({ facts: factsCache, company });
+  }, [company, factsCache]);
+
+  useEffect(() => {
+    const onLeave = () => {
+      if (company && factsCache) sc({ facts: factsCache, company });
+      sp({ ticker, mode, view, dark, showDebug, scaleSlider });
+    };
+    window.addEventListener('beforeunload', onLeave);
+    return () => window.removeEventListener('beforeunload', onLeave);
+  }, [company, factsCache, ticker, mode, view, dark, showDebug, scaleSlider]);
 
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
@@ -793,19 +837,35 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const search = async (sym: string) => {
+  const search = async (sym: string, opts?: { keepPrevious?: boolean }) => {
     sym = (sym || '').trim().toUpperCase();
     setError(null);
-    setCompany(null);
-    setPd(null);
-    setFactsCache(null);
-    if (!sym || !tickers) return;
+    if (!opts?.keepPrevious) {
+      setCompany(null);
+      setPd(null);
+      setFactsCache(null);
+    }
+    if (!sym) return;
+    // Allow refresh even while tickers still loading if we already know CIK from company/cache
     setLoading(true);
     setLogs([]);
     try {
-      const co = (Object.values(tickers) as any[]).find((c) => c.ticker === sym);
+      let co: any = null;
+      if (tickers) {
+        co = (Object.values(tickers) as any[]).find((c) => c.ticker === sym);
+      }
+      if (!co && company?.ticker === sym && company?.cik) {
+        co = { ticker: company.ticker, title: company.title, cik_str: Number(company.cik) };
+      }
+      if (!co && cached?.company?.ticker === sym && cached?.company?.cik) {
+        co = {
+          ticker: cached.company.ticker,
+          title: cached.company.title,
+          cik_str: Number(cached.company.cik),
+        };
+      }
       if (!co) throw new Error(`"${sym}" not found`);
-      const cik = String(co.cik_str).padStart(10, '0');
+      const cik = String(co.cik_str ?? co.cik).padStart(10, '0');
       log(`${sym} → CIK ${cik}`);
       const dataCands = [
         ...new Set([...(wwwBase ? [] : []), ...DATA_CANDIDATES, ...UNIFIED]),
@@ -907,6 +967,17 @@ function App() {
   const tblFs = `${Math.round(14 * scale)}px`;
   const tblHFs = `${Math.round(11 * scale)}px`;
   const tblCellPy = `${Math.round(10 * scale)}px`;
+
+  const guideLink = (
+    <a
+      href={README_QUICKSTART}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-emerald-500 hover:underline text-xs font-semibold"
+    >
+      📖 {t('guide.details', lang)}
+    </a>
+  );
 
   return (
     <Fragment>
@@ -1220,6 +1291,18 @@ function App() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (company?.ticker) search(company.ticker, { keepPrevious: true });
+                      else if (ticker) search(ticker, { keepPrevious: true });
+                    }}
+                    disabled={loading || !(company?.ticker || ticker)}
+                    className={`w-full text-xs font-semibold py-2 rounded-lg border ${bdr} ${hR} ${t1} disabled:opacity-40`}
+                    title={t('settings.refresh', lang)}
+                  >
+                    🔄 {t('settings.refresh', lang)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       cc();
                       setCompany(null);
                       setPd(null);
@@ -1299,19 +1382,32 @@ function App() {
             <pre
               className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono mt-1`}
             >{`bun ./scripts/sec-proxy.ts`}</pre>
-            <button onClick={init} className="mt-3 text-emerald-500 text-xs hover:underline">
-              {t('proxy.retry', lang)}
-            </button>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button onClick={init} className="text-emerald-500 text-xs hover:underline">
+                {t('proxy.retry', lang)}
+              </button>
+              {guideLink}
+            </div>
           </div>
         )}
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded-xl mb-6 text-sm flex items-start gap-2 animate-fade-in max-w-3xl mx-auto whitespace-pre-wrap">
-            <span className="flex-shrink-0 mt-0.5">✕</span>
-            <span className="flex-1 font-mono text-xs">{error}</span>
-            <button onClick={init} className="text-xs hover:underline flex-shrink-0">
-              {t('error.retry', lang)}
-            </button>
+          <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded-xl mb-6 text-sm flex flex-col gap-2 animate-fade-in max-w-3xl mx-auto">
+            <div className="flex items-start gap-2 whitespace-pre-wrap">
+              <span className="flex-shrink-0 mt-0.5">✕</span>
+              <span className="flex-1 font-mono text-xs">{error}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 pl-5">
+              <button onClick={init} className="text-xs hover:underline font-semibold">
+                {t('error.retry', lang)}
+              </button>
+              {guideLink}
+            </div>
+            <div className={`pl-5 text-[11px] ${mt}`}>
+              {t('proxy.title', lang)}{' '}
+              <span className="font-mono">local-cors-proxy</span> /{' '}
+              <span className="font-mono">bun ./scripts/sec-proxy.ts</span>
+            </div>
           </div>
         )}
 
@@ -1324,6 +1420,16 @@ function App() {
                   {company.title} · CIK {company.cik}
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => search(company.ticker, { keepPrevious: true })}
+                disabled={loading}
+                title={t('settings.refresh', lang)}
+                aria-label={t('settings.refresh', lang)}
+                className={`flex-shrink-0 text-sm px-3 py-1.5 rounded-lg border ${bdr} ${hR} ${t1} font-semibold disabled:opacity-40`}
+              >
+                🔄 {t('settings.refresh', lang)}
+              </button>
             </div>
 
             {SEC.map((section) => {
@@ -1343,7 +1449,7 @@ function App() {
                     dark ? section.hc : section.hcL
                   } border-b ${bdr}`}
                 >
-                  <div className={`font-semibold text-sm ${clr.text}`}>
+                  <div className={`font-semibold ${clr.text}`} style={{ fontSize: `${Math.round(13 * scale)}px` }}>
                     {t(section.titleKey, lang) || section.title}
                   </div>
                   <input
