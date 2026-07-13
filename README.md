@@ -1,78 +1,127 @@
 # fundamentals
 
-Fundamentals app using SEC free financial data API [article](https://dev.to/m0dus/the-sec-has-a-free-financial-data-api-that-nobody-talks-about-dfi)
+SEC EDGAR Financial Fundamentals Dashboard — React + TypeScript + Tailwind CSS v4 (Parcel build) + GitHub Pages.
 
-<!-- https://arena.ai/c/019f1c6c-8842-7637-852c-fdba43e83e64 -->
+> **RU:** Дашборд фундаментальных данных публичных компаний США на базе бесплатного API SEC EDGAR. Статическое приложение: React + TypeScript + Tailwind v4, сборка Parcel, деплой на GitHub Pages.
 
-## Быстрый старт / Quick start
-
-1. Запустите прокси для www.sec.gov:
-
-```bash
-bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011
-```
-
-2. Запустите прокси для data.sec.gov:
-
-```bash
-bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012
-```
-
-3. Запустите статический сервер:
-
-```bash
-bunx serve .
-```
-
-4. Откройте приложение:
-
-```bash
-open http://localhost:3000/
-```
-
----
-
-## 📚 Документация / Documentation
-
-Все документы находятся в директории `docs/`:
+## 📚 Документация
 
 | Документ | Описание |
 |----------|----------|
-| [findings.en.md](docs/findings.en.md) | Архитектурный обзор (английский) — технологии, библиотеки, проблемы, рекомендации |
-| [findings.ru.md](docs/findings.ru.md) | Архитектурный обзор (русский) |
-| [REQUIREMENTS.en.md](docs/REQUIREMENTS.en.md) | Требования к приложению (английский) — для общения с AI-агентами и разработки |
-| [REQUIREMENTS.ru.md](docs/REQUIREMENTS.ru.md) | Требования к приложению (русский) |
-
-> Эти документы были подготовлены в рамках архитектурного ревью для удобства дальнейшей разработки и форка showcase-версии.
-
----
-
-## О приложении / About
-
-Приложение позволяет анализировать фундаментальные данные публичных компаний США с использованием бесплатного API SEC EDGAR (XBRL).
-
-- Поиск по тикеру или названию компании
-- Годовой и квартальный режимы
-- Таблицы + мини-графики
-- Income Statement, Cash Flow, Balance Sheet, Per Share метрики
-- Вычисляемые коэффициенты (маржи, FCF, ROE и др.)
-- Тёмная/светлая тема, масштабирование, кэширование
+| [findings.en.md](docs/findings.en.md) | Архитектурный обзор (EN) |
+| [findings.ru.md](docs/findings.ru.md) | Архитектурный обзор (RU) |
+| [REQUIREMENTS.en.md](docs/REQUIREMENTS.en.md) | Требования для AI-агентов (EN) |
+| [REQUIREMENTS.ru.md](docs/REQUIREMENTS.ru.md) | Требования для AI-агентов (RU) |
+| [docs/README.md](docs/README.md) | Навигация по документации |
 
 ---
 
-## Ограничения текущей версии
+## Быстрый старт (с использованием Bun)
 
-- Однофайловое HTML-приложение (намеренно для прототипа)
-- Требует локальных прокси (CORS)
-- Использует Babel standalone в браузере (для демонстрации)
+```bash
+git clone https://github.com/daggerok/fundamentals.git
+cd fundamentals
+bun install -E
+```
 
-Для production / showcase-версии рекомендуется перейти на сборку (Vite и т.п.) + серверный прокси.
+### Запуск с прокси (рекомендуется)
+
+```bash
+# Терминал 1 — прокси
+bun ./scripts/sec-proxy.ts
+
+# Терминал 2 — приложение
+bun run serve
+```
+
+Откройте http://localhost:1234 (или порт, который покажет Parcel).
+
+### Сборка
+
+```bash
+bun run build
+bun run build-github-pages   # для GitHub Pages с правильным public URL
+```
 
 ---
 
-## Ссылки
+## Ключевые концепции (вдохновлено options-desk)
 
-- [GitHub Pages](https://daggerok.github.io/fundamentals/)
-- [SEC EDGAR API](https://www.sec.gov/edgar/sec-api-documentation)
+### 1. Прокси (Bun)
 
-*Проект находится в активной разработке.*
+- `scripts/sec-proxy.ts` — релей для `www.sec.gov` + `data.sec.gov` + префетчинг тикеров
+- Обязательный `User-Agent`
+- Поддержка `/api/company_tickers` и `/api/search`
+
+### 2. SPA: TypeScript + React + TSX + Tailwind v4
+
+- `src/main.tsx` (или эквивалент) — всё приложение
+- `src/index.html` + `src/index.css`
+- Используется **Parcel** (не Vite/Webpack)
+
+### 3. Пре-фетчинг тикеров для GitHub Pages
+
+- GitHub Action (`update-data.yml`) скачивает `company_tickers.json` в `data/`
+- Приложение использует локальный `data/company_tickers.json` как статический кэш
+- На GitHub Pages работает **без прокси** для тикеров
+
+### 4. i18n (EN / RU)
+
+- Полная поддержка английского и русского
+- Переключатель языка в шапке и настройках
+
+### 5. Bun вместо npm
+
+- `bun install -E`
+- `bun run serve`
+- `bun ./scripts/sec-proxy.ts`
+
+---
+
+## Основные команды
+
+```bash
+bun install -E          # установка
+bun run serve           # dev сервер (Parcel)
+bun run build           # production сборка
+bun run build-github-pages
+bun ./scripts/sec-proxy.ts   # прокси для разработки
+```
+
+---
+
+## Структура проекта (по образцу options-desk)
+
+```
+fundamentals/
+├── src/
+│   ├── index.html
+│   ├── index.css
+│   └── main.tsx            # ← основное приложение
+├── scripts/
+│   └── sec-proxy.ts
+├── data/
+│   └── company_tickers.json   # префетчится в CI
+├── .github/workflows/
+│   ├── ci.yaml
+│   ├── github-pages.yml
+│   └── update-data.yml
+├── package.json
+└── README.md
+```
+
+---
+
+## Следующие шаги (рекомендуется)
+
+1. Перенести логику из старого `index.html` в `src/main.tsx` (React + TS)
+2. Добавить типы для SEC данных
+3. Реализовать провайдеры (CACHE / PROXY)
+4. Добавить i18n (аналогично options-desk)
+5. Настроить кэш + настройки в localStorage
+
+Готовы продолжить миграцию — скажите «go» или «продолжай».
+
+---
+
+*Проект переведён на современный стек по образцу https://github.com/daggerok/options-desk/*
