@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ master, 'architect-review/*' ]
+    branches: [ master, 'architect-review/*', 'fix/*', 'chore/*', 'style/*' ]
   pull_request:
   workflow_dispatch:
 
@@ -45,3 +45,35 @@ jobs:
           ls -la dist/data/ || echo "no data"
           echo "=== build success check ==="
           ls dist/index.html dist/fundamentals.*.js 2>/dev/null && echo "Build artifacts OK" || echo "MISSING ARTIFACTS"
+
+  # Like daggerok/csv: on every master/CI run, verify latest npm modules still build
+  npm-check-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-ncu-${{ hashFiles('**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Bump deps to latest (ephemeral check — not committed)
+        run: bunx npm-check-updates -u
+
+      - name: Install updated dependencies
+        run: bun install
+
+      - name: Build with updated deps
+        run: bun run build
+
+      - name: Build GitHub Pages with updated deps
+        run: bun run build-github-pages
+
+      - name: Clean
+        run: bun run clean || true
