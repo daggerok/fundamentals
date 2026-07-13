@@ -162,3 +162,19 @@ fundamentals/
 
 UI mirrors [fundamentals-runtime](https://github.com/daggerok/fundamentals-runtime) (search bar header, dual proxy dots, console, colored section cards, ⊞/◔, scale slider, full metric set). **Difference:** EN/RU i18n via 🇺🇸/🇷🇺 pill.
 
+
+---
+
+## Data pre-fetch (Python / uv)
+
+Same pattern as [options-desk](https://github.com/daggerok/options-desk):
+
+```bash
+# requires uv (https://docs.astral.sh/uv/)
+uv run python scripts/fetch_data.py
+# or:
+bun run data:fetch
+```
+
+Writes `data/company_tickers.json` + `data/index.json`.  
+GitHub Action **Update SEC data** runs this on a schedule via `astral-sh/setup-uv`.
