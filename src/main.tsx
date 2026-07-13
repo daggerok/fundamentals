@@ -307,8 +307,17 @@ const MiniChart = ({ data, label, unit, dark }: any) => {
   const yp = (v: number) => 6 + ch - ((v - (mn - pad)) / (mx + pad - (mn - pad))) * ch;
   const pts = valid.map((d: any, i: number) => `${xp(i)},${yp(d.value)}`).join(' ');
   return (
-    <div className="rounded-xl p-3 border bg-white/60 dark:bg-slate-900/60">
-      <div className="text-xs font-medium mb-1 text-slate-600 dark:text-slate-400">{label}</div>
+    <div
+      className="rounded-xl p-3 border"
+      style={{
+        background: dark ? 'rgba(15,23,42,0.55)' : 'rgba(255,255,255,0.7)',
+        borderColor: dark ? '#334155' : '#e2e8f0',
+        color: dark ? '#e2e8f0' : '#0f172a',
+      }}
+    >
+      <div className="text-xs font-medium mb-1" style={{ color: dark ? '#94a3b8' : '#64748b' }}>
+        {label}
+      </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[100px]">
         <polyline
           points={pts}
@@ -362,7 +371,7 @@ function Pill({
             key={k}
             type="button"
             onClick={() => onChange(k)}
-            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+            className={`px-2.5 py-1 rounded-md text-sm font-bold leading-none transition-all ${
               active
                 ? 'bg-emerald-500 text-white shadow-sm'
                 : dark
@@ -419,7 +428,11 @@ function App() {
   const scale = 0.7 + (scaleSlider / 100) * 0.8;
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
+    const root = document.documentElement;
+    root.classList.toggle('dark', dark);
+    // Keep body in sync (Tailwind preflight / host pages can override otherwise)
+    document.body.style.backgroundColor = dark ? '#020617' : '#f8fafc';
+    document.body.style.color = dark ? '#f1f5f9' : '#0f172a';
     localStorage.setItem('sec-dark', dark ? '1' : '0');
   }, [dark]);
   useEffect(() => {
@@ -620,8 +633,8 @@ function App() {
             <Pill
               value={lang}
               options={[
-                { k: 'en', l: 'EN' },
-                { k: 'ru', l: 'RU' },
+                { k: 'en', l: '🇺🇸' },
+                { k: 'ru', l: '🇷🇺' },
               ]}
               onChange={(k) => setLang(k as Language)}
               dark={dark}
@@ -768,7 +781,7 @@ function App() {
 
               return (
                 <div key={i} className="fund-card rounded-xl overflow-hidden shadow-lg border animate-fade-in">
-                  <div className="flex justify-between items-center gap-3 px-5 py-3 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/40">
+                  <div className="fund-card-header flex justify-between items-center gap-3 px-5 py-3">
                     <div className="font-semibold text-sm sm:text-base">{section.title}</div>
                     <input
                       type="range"
@@ -802,7 +815,10 @@ function App() {
                       >
                         <thead>
                           <tr>
-                            <th className="text-left py-2 sticky left-0 bg-inherit">
+                            <th
+                              className="text-left py-2 sticky left-0"
+                              style={{ background: 'var(--od-card)' }}
+                            >
                               {lang === 'ru' ? 'Метрика' : 'Metric'}
                             </th>
                             {processed.periodKeys.map((pk: any, j: number) => (
@@ -812,12 +828,12 @@ function App() {
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        <tbody className="divide-y">
                           {all.map((m) => (
-                            <tr key={m.key} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                              <td className="py-1.5 pr-3 font-medium sticky left-0 bg-inherit">
+                            <tr key={m.key} className="">
+                              <td className="py-1.5 pr-3 font-medium sticky left-0" style={{ background: 'var(--od-card)' }}>
                                 {m.label}{' '}
-                                <span className="text-xs text-slate-400">({m.unit})</span>
+                                <span className="metric-unit text-xs">({m.unit})</span>
                               </td>
                               {m.series.map((d: any, j: number) => (
                                 <td key={j} className="px-2 py-1.5 text-right font-mono tabular-nums">
