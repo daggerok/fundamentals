@@ -26,9 +26,9 @@ const translations: Record<Language, Record<string, string>> = {
   en: {
     'search.placeholder': 'Ticker or company name…',
     'search.load': 'Load data',
-    'proxy.title': 'Start two proxy terminals:',
+    'proxy.title': 'Start proxies (required for live SEC data):',
     'proxy.retry': '↻ Retry',
-    'proxy.orBun': 'Or one Bun proxy:',
+    'proxy.orBun': 'Recommended (pm2, README quick start):',
     'error.retry': 'Retry',
     'no.data': 'Enter a ticker (AAPL, MSFT, NVDA…)',
     'console.toggle': 'Toggle debug console',
@@ -59,8 +59,8 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.proxyWww': 'www.sec.gov proxy',
     'settings.proxyData': 'data.sec.gov proxy',
     'settings.clearCache': 'Clear cached company',
-    'settings.refresh': 'Refresh current ticker',
     'guide.details': 'Setup details (README)',
+    'proxy.actual': 'This app uses dual local-cors-proxy (www:8011 + data:8012) via bun start / bun run serve, or single Bun proxy: bun ./scripts/sec-proxy.ts + bun run serve:app.',
     'cache.restored': 'Restored from cache',
     'settings.close': 'Close',
     'view.charts': 'Charts',
@@ -75,9 +75,9 @@ const translations: Record<Language, Record<string, string>> = {
   ru: {
     'search.placeholder': 'Тикер или название компании…',
     'search.load': 'Загрузить',
-    'proxy.title': 'Запустите два прокси-терминала:',
+    'proxy.title': 'Запустите прокси (нужны для live SEC data):',
     'proxy.retry': '↻ Повтор',
-    'proxy.orBun': 'Или один Bun-прокси:',
+    'proxy.orBun': 'Рекомендуется (pm2, README quick start):',
     'error.retry': 'Повтор',
     'no.data': 'Введите тикер (AAPL, MSFT, NVDA…)',
     'console.toggle': 'Консоль отладки',
@@ -108,8 +108,8 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.proxyWww': 'Прокси www.sec.gov',
     'settings.proxyData': 'Прокси data.sec.gov',
     'settings.clearCache': 'Очистить кэш компании',
-    'settings.refresh': 'Обновить текущий тикер',
     'guide.details': 'Подробности (README)',
+    'proxy.actual': 'Приложение использует dual local-cors-proxy (www:8011 + data:8012) через bun start / bun run serve, либо один Bun-прокси: bun ./scripts/sec-proxy.ts + bun run serve:app.',
     'cache.restored': 'Восстановлено из кэша',
     'settings.close': 'Закрыть',
     'view.charts': 'Графики',
@@ -1246,15 +1246,19 @@ function App() {
                       <span className={`text-xs ${t2}`}>{t('settings.scale', lang)}</span>
                       <span className={`text-xs font-mono ${mt}`}>{Math.round(scale * 100)}%</span>
                     </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={scaleSlider}
-                      onChange={(e) => setScaleSlider(+e.target.value)}
-                      className="scale-slider w-full"
-                      title={t('settings.scale', lang)}
-                    />
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] ${mt}`}>A</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={scaleSlider}
+                        onChange={(e) => setScaleSlider(Number(e.target.value))}
+                        className="scale-slider w-full"
+                        title={`${t('settings.scale', lang)}: ${Math.round(scale * 100)}%`}
+                      />
+                      <span className={`text-xs font-bold ${mt}`}>A</span>
+                    </div>
                   </div>
 
                   <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
@@ -1280,26 +1284,25 @@ function App() {
                   <div className="grid gap-2">
                     <pre
                       className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`local-cors-proxy --proxyUrl https://www.sec.gov --port 8011`}</pre>
+                    >{`bun start  # dual local-cors-proxy 8011/8012 + app`}</pre>
                     <pre
                       className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`local-cors-proxy --proxyUrl https://data.sec.gov --port 8012`}</pre>
+                    >{`bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011`}</pre>
                     <pre
                       className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bun ./scripts/sec-proxy.ts`}</pre>
+                    >{`bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012`}</pre>
+                    <pre
+                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
+                    >{`bun ./scripts/sec-proxy.ts && bun run serve:app`}</pre>
+                    <a
+                      href={README_QUICKSTART}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-500 hover:underline text-[11px] font-semibold"
+                    >
+                      📖 {t('guide.details', lang)}
+                    </a>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (company?.ticker) search(company.ticker, { keepPrevious: true });
-                      else if (ticker) search(ticker, { keepPrevious: true });
-                    }}
-                    disabled={loading || !(company?.ticker || ticker)}
-                    className={`w-full text-xs font-semibold py-2 rounded-lg border ${bdr} ${hR} ${t1} disabled:opacity-40`}
-                    title={t('settings.refresh', lang)}
-                  >
-                    🔄 {t('settings.refresh', lang)}
-                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1369,19 +1372,32 @@ function App() {
       <div className="px-4 xl:px-8 py-6">
         {!tickers && !tkL && (
           <div className={`${card} border rounded-xl p-5 mb-6 text-sm max-w-3xl mx-auto`}>
-            <p className={`font-bold mb-3 ${t1}`}>{t('proxy.title', lang)}</p>
+            <p className={`font-bold mb-2 ${t1}`}>{t('proxy.title', lang)}</p>
+            <p className={`text-xs mb-3 ${t2}`}>{t('proxy.actual', lang)}</p>
+            <p className={`text-xs font-semibold mb-1 ${mt}`}>{t('proxy.orBun', lang)}</p>
+            <pre
+              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono mb-3`}
+            >{`bun install -E
+bun stop ; bun kill ; bun ps ; bun start ; bun logs
+# dual local-cors-proxy :8011 www + :8012 data + Parcel`}</pre>
+            <p className={`text-xs font-semibold mb-1 ${mt}`}>Manual dual proxy</p>
             <div className="grid md:grid-cols-2 gap-3">
               <pre
                 className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-              >{`local-cors-proxy \\\n  --proxyUrl https://www.sec.gov \\\n  --port 8011`}</pre>
+              >{`bunx local-cors-proxy \
+  --proxyUrl https://www.sec.gov \
+  --port 8011`}</pre>
               <pre
                 className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-              >{`local-cors-proxy \\\n  --proxyUrl https://data.sec.gov \\\n  --port 8012`}</pre>
+              >{`bunx local-cors-proxy \
+  --proxyUrl https://data.sec.gov \
+  --port 8012`}</pre>
             </div>
-            <p className={`mt-3 text-xs ${mt}`}>{t('proxy.orBun', lang)}</p>
+            <p className={`mt-3 text-xs font-semibold mb-1 ${mt}`}>Single Bun SEC proxy + app</p>
             <pre
-              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono mt-1`}
-            >{`bun ./scripts/sec-proxy.ts`}</pre>
+              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
+            >{`bun ./scripts/sec-proxy.ts
+bun run serve:app`}</pre>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button onClick={init} className="text-emerald-500 text-xs hover:underline">
                 {t('proxy.retry', lang)}
@@ -1403,33 +1419,20 @@ function App() {
               </button>
               {guideLink}
             </div>
-            <div className={`pl-5 text-[11px] ${mt}`}>
-              {t('proxy.title', lang)}{' '}
-              <span className="font-mono">local-cors-proxy</span> /{' '}
-              <span className="font-mono">bun ./scripts/sec-proxy.ts</span>
+            <div className={`pl-5 text-[11px] space-y-1 ${mt}`}>
+              <div>{t('proxy.actual', lang)}</div>
+              <div className="font-mono text-[10px]">bun start  ·  bun ./scripts/sec-proxy.ts + bun run serve:app</div>
             </div>
           </div>
         )}
 
         {company && !loading && pd && (
           <div className="space-y-6 animate-fade-in">
-            <div className="flex items-end justify-between gap-4 flex-wrap">
-              <div>
-                <div className={`text-3xl font-bold ${t1}`}>{company.ticker}</div>
-                <div className={`text-sm ${t2}`}>
-                  {company.title} · CIK {company.cik}
-                </div>
+            <div className="flex items-baseline justify-between gap-4 flex-wrap mb-1">
+              <div className={`text-3xl font-bold tracking-tight ${t1}`}>{company.ticker}</div>
+              <div className={`text-sm text-right ${t2}`}>
+                {company.title} · CIK {company.cik}
               </div>
-              <button
-                type="button"
-                onClick={() => search(company.ticker, { keepPrevious: true })}
-                disabled={loading}
-                title={t('settings.refresh', lang)}
-                aria-label={t('settings.refresh', lang)}
-                className={`flex-shrink-0 text-sm px-3 py-1.5 rounded-lg border ${bdr} ${hR} ${t1} font-semibold disabled:opacity-40`}
-              >
-                🔄 {t('settings.refresh', lang)}
-              </button>
             </div>
 
             {SEC.map((section) => {
@@ -1449,17 +1452,26 @@ function App() {
                     dark ? section.hc : section.hcL
                   } border-b ${bdr}`}
                 >
-                  <div className={`font-semibold ${clr.text}`} style={{ fontSize: `${Math.round(13 * scale)}px` }}>
+                  <h3
+                    className={`font-semibold ${clr.text} min-w-0 truncate`}
+                    style={{ fontSize: `${Math.round(16 * scale)}px` }}
+                  >
                     {t(section.titleKey, lang) || section.title}
+                  </h3>
+                  <div className="flex items-center gap-2 flex-shrink-0" title={t('settings.scale', lang)}>
+                    <span className={`text-[10px] ${mt}`}>A</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={scaleSlider}
+                      onChange={(e) => setScaleSlider(Number(e.target.value))}
+                      className="scale-slider w-20"
+                      title={`${t('settings.scale', lang)}: ${Math.round(scale * 100)}%`}
+                      aria-label={t('settings.scale', lang)}
+                    />
+                    <span className={`text-xs font-bold ${mt}`}>A</span>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={scaleSlider}
-                    onChange={(e) => setScaleSlider(+e.target.value)}
-                    className="scale-slider w-24"
-                  />
                 </div>
               );
 
