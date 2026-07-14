@@ -61,7 +61,7 @@ describe('currency preference UI', () => {
     expect(main).toContain('type="checkbox"');
     expect(main).toContain('checked={preferUsd}');
     expect(main).toContain('setPreferUsd(event.target.checked)');
-    expect(main).toContain("pd?.primaryCurrency !== 'USD'");
+    expect(main).toContain("pd.primaryCurrency !== 'USD'");
     expect(main).toContain("source.currency !== 'USD'");
   });
 });
