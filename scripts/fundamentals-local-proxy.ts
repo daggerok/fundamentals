@@ -13,14 +13,14 @@
  *     replace both: one process, correct User-Agent, same URL shapes.
  *
  * RUN (default — data host, port 8012):
- *   bun ./scripts/sec-proxy.ts
- *   PORT=8012 bun ./scripts/sec-proxy.ts
+ *   bun ./scripts/fundamentals-local-proxy.ts
+ *   PORT=8012 bun ./scripts/fundamentals-local-proxy.ts
  *
  * RUN as www host (port 8011, like fundamentals-runtime):
- *   MODE=www PORT=8011 bun ./scripts/sec-proxy.ts
+ *   MODE=www PORT=8011 bun ./scripts/fundamentals-local-proxy.ts
  *
  * RUN unified (both www + data on one port — recommended):
- *   MODE=both PORT=8012 bun ./scripts/sec-proxy.ts
+ *   MODE=both PORT=8012 bun ./scripts/fundamentals-local-proxy.ts
  *
  * URL shapes accepted (compatible with fundamentals-runtime + app):
  *   http://localhost:8011/proxy/files/company_tickers.json   → www.sec.gov
@@ -29,7 +29,7 @@
  *   http://localhost:8012/api/xbrl/companyfacts/CIK....json
  *   http://localhost:8012/files/company_tickers.json
  *
- * DEPLOY: same logic can be ported to Cloudflare Worker (scripts/cloudflare-worker.js).
+ * DEPLOY: same logic can be ported to Cloudflare Worker (scripts/fundamentals-cloudflare-proxy.js).
  * =============================================================================
  */
 

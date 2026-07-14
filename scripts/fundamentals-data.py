@@ -3,15 +3,18 @@
 # Fundamentals — build-time SEC static cache (options-desk coverage-first)
 # -----------------------------------------------------------------------------
 # Same-origin files for GitHub Pages (copied to dist/data via ncp):
-#   data/company_tickers.json     SEC ticker map (search)
-#   data/{TICKER}.json            companyfacts for CACHE mode
-#   data/index.json               manifest: files, count, generated, names
+#   data/fundamentals/company_tickers.json     SEC ticker map (search)
+#   data/fundamentals/{TICKER}.json            companyfacts for CACHE mode
+#   data/fundamentals/index.json               manifest: files (ticker list), count, names
+#                                 (no per-ticker timestamps / no `generated` —
+#                                 freshness uses filesystem mtime; git only sees
+#                                 real content changes)
 #
 # RUN:
-#   uv run python scripts/fetch_data.py
-#   MAX_FETCHES=100 uv run python scripts/fetch_data.py
-#   TICKERS="AAPL MSFT" uv run python scripts/fetch_data.py   # explicit only
-#   UNIVERSE_SIZE=500 SKIP_FRESH_HOURS=0 MAX_FETCHES=50 uv run python scripts/fetch_data.py
+#   uv run python scripts/fundamentals-data.py
+#   MAX_FETCHES=100 uv run python scripts/fundamentals-data.py
+#   TICKERS="AAPL MSFT" uv run python scripts/fundamentals-data.py   # explicit only
+#   UNIVERSE_SIZE=500 SKIP_FRESH_HOURS=0 MAX_FETCHES=50 uv run python scripts/fundamentals-data.py
 #
 # QUEUE (when TICKERS not set) — options-desk style:
 #   1) MISSING symbols from company_tickers (coverage-first)
@@ -39,7 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
+DATA_DIR = ROOT / "data" / "fundamentals"
 INDEX_PATH = DATA_DIR / "index.json"
 TICKERS_PATH = DATA_DIR / "company_tickers.json"
 
@@ -106,7 +109,7 @@ def _get_json(session, url: str) -> dict:
             if r.status_code == 403:
                 raise RuntimeError(
                     "SEC 403 Forbidden — descriptive User-Agent with contact email required.\n"
-                    f'  SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fetch_data.py\n'
+                    f'  SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fundamentals-data.py\n'
                     f"Current UA: {UA!r}"
                 )
             if r.status_code == 404:
@@ -256,49 +259,93 @@ def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
             f"payload too small ({len(text)} B < MIN_FACTS_BYTES={MIN_FACTS_BYTES}); "
             "likely empty/non-operating entity"
         )
-    # Prefer files that actually have fundamentals (us-gaap or ifrs-full usable)
-    # ADR / foreign issuers like TSM file 20-F using IFRS → facts contains ifrs-full, not us-gaap
+    # Keep every usable SEC taxonomy. Most issuers use us-gaap or ifrs-full,
+    # but valid companyfacts may also contain other/custom taxonomies.
     fobj = payload.get("facts") or {}
-    if not isinstance(fobj, dict) or ("us-gaap" not in fobj and "ifrs-full" not in fobj):
-        # Provide helpful debug: what taxonomies are present?
+    usable = isinstance(fobj, dict) and any(
+        isinstance(taxonomy, dict)
+        and any(
+            isinstance(fact, dict)
+            and isinstance(fact.get("units"), dict)
+            and any(isinstance(rows, list) and rows for rows in fact["units"].values())
+            for fact in taxonomy.values()
+        )
+        for taxonomy in fobj.values()
+    )
+    if not usable:
         present = list(fobj.keys())[:12] if isinstance(fobj, dict) else []
-        raise ValueError(f"no us-gaap in companyfacts.facts (present taxonomies: {present})")
+        raise ValueError(f"no usable companyfacts taxonomies (present: {present})")
     path.write_text(text, encoding="utf-8")
     return path
 
 
-def rebuild_index(names: dict[str, str]) -> None:
-    files: dict[str, str] = {}
+def _normalize_files_list(raw) -> list[str]:
+    """Accept legacy {TICKER: updatedISO} maps or plain ticker lists."""
+    if isinstance(raw, dict):
+        return sorted(str(k) for k in raw.keys() if k and k != "company_tickers.json")
+    if isinstance(raw, list):
+        return sorted({str(x) for x in raw if x and str(x) != "company_tickers.json"})
+    return []
+
+
+def rebuild_index(names: dict[str, str]) -> bool:
+    """Rewrite data/fundamentals/index.json only when the ticker set / names / skiplist change.
+
+    Shape (no timestamps): { files: [TICKER, ...], count, names, no_options? }.
+    Freshness for the fetcher uses filesystem mtime (see is_fresh / file_mtime),
+    so we deliberately do NOT store per-ticker `updated` or a global `generated`
+    stamp — those only churned git commits when no data content changed.
+    Returns True if the file was written.
+    """
+    tickers: list[str] = []
     for p in sorted(DATA_DIR.glob("*.json")):
         if p.name in ("index.json", "company_tickers.json"):
             continue
+        tickers.append(p.stem)
         try:
             doc = json.loads(p.read_text(encoding="utf-8"))
-            files[p.stem] = doc.get("updated") or _now_iso()
             if doc.get("title"):
                 names[p.stem] = doc["title"]
         except Exception:
-            files[p.stem] = _now_iso()
-    if TICKERS_PATH.exists():
-        files["company_tickers.json"] = _now_iso()
+            pass
+
+    prev: dict = {}
     prev_no_options: dict = {}
     if INDEX_PATH.exists():
         try:
             prev = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+            if not isinstance(prev, dict):
+                prev = {}
             prev_no_options = prev.get("no_options") or {}
             for k, v in (prev.get("names") or {}).items():
                 names.setdefault(k, v)
         except Exception:
-            pass
+            prev = {}
+
+    files = sorted(tickers)
+    names_sorted = dict(sorted(names.items()))
     index = {
-        "files": dict(sorted(files.items())),
-        "count": len([k for k in files if k != "company_tickers.json"]),
-        "generated": _now_iso(),
-        "names": dict(sorted(names.items())),
+        "files": files,
+        "count": len(files),
+        "names": names_sorted,
         "no_options": prev_no_options,
     }
+
+    prev_normalized = {
+        "files": _normalize_files_list(prev.get("files")),
+        "count": len(_normalize_files_list(prev.get("files"))),
+        "names": dict(sorted((prev.get("names") or {}).items())) if isinstance(prev.get("names"), dict) else {},
+        "no_options": prev_no_options if isinstance(prev_no_options, dict) else {},
+    }
+    # Also rewrite once when migrating off legacy timestamp fields.
+    legacy = "generated" in prev or isinstance(prev.get("files"), dict)
+    if prev_normalized == index and not legacy:
+        _log(f"index: unchanged ({len(files)} ticker caches) — skip rewrite")
+        return False
+
     INDEX_PATH.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
     _log(f"index: wrote {INDEX_PATH} ({index['count']} ticker caches)")
+    return True
 
 
 def resolve_meta(tmap: dict[str, dict], sym: str) -> tuple[str, dict] | None:
@@ -316,7 +363,7 @@ def main() -> int:
     try:
         import requests  # noqa: F401
     except ImportError:
-        _log("ERROR: requests required — uv run python scripts/fetch_data.py")
+        _log("ERROR: requests required — uv run python scripts/fundamentals-data.py")
         return 1
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)

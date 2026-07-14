@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -18,13 +18,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install -E
-      - run: bun build ./scripts/sec-proxy.ts --outdir=/tmp/sec-proxy-check --target=bun
+      - run: bun run test
+      - run: bun build ./scripts/fundamentals-local-proxy.ts --outdir=/tmp/fundamentals-local-proxy-check --target=bun
       - run: bun run build
       - run: bun run build-github-pages
   npm-check-updates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

@@ -10,30 +10,116 @@ import React, {
   Fragment,
 } from 'react';
 import { createRoot } from 'react-dom/client';
+import {
+  detectPrimaryCurrency,
+  extractMetric,
+  hasUsableFacts,
+  inspectReporting,
+  normalizeFacts,
+  staticDataUrl,
+  type ReportingInfo,
+} from './data-utils';
 
 type Language = 'en' | 'ru';
-type Mode = 'Y' | 'Q';
+type Mode = 'Y' | 'Q' | 'I';
 type View = 'T' | 'C';
-/** CACHE = same-origin /data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
+/** CACHE = same-origin ./data/fundamentals/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
 type DataSource = 'cache' | 'live';
+
+/**
+ * Shared color palettes across daggerok apps (fundamentals + options-desk).
+ * Each product keeps its native default; the other palette is selectable so a
+ * future merge ships with both UIs already consistent.
+ *  - fundamentals → Emerald Ledger (emerald accents, slate-950 dark surface)
+ *  - options-desk → Indigo Desk     (indigo accents, slate-900 dark surface)
+ */
+type ColorThemeId = 'fundamentals' | 'options-desk';
+const DEFAULT_COLOR_THEME: ColorThemeId = 'fundamentals';
+
+type AccentPalette = {
+  btn: string;
+  pillActive: string;
+  focusBorder: string;
+  accentInput: string;
+  textDark: string;
+  textLight: string;
+  textSoftDark: string;
+  textSoftLight: string;
+  chipActiveDark: string;
+  chipActiveLight: string;
+  monoBlockDark: string;
+  monoBlockLight: string;
+  statusOk: string;
+  dotOnDark: string;
+  dotOnLight: string;
+  sun: string;
+};
+
+const ACCENT: Record<ColorThemeId, AccentPalette> = {
+  fundamentals: {
+    btn: 'bg-emerald-500 hover:bg-emerald-400',
+    pillActive: 'bg-emerald-500 text-white shadow-sm',
+    focusBorder: 'focus:border-emerald-500',
+    accentInput: 'accent-emerald-500',
+    textDark: 'text-emerald-400',
+    textLight: 'text-emerald-700',
+    textSoftDark: 'text-emerald-300',
+    textSoftLight: 'text-emerald-700',
+    chipActiveDark: 'bg-slate-700 text-emerald-400',
+    chipActiveLight: 'bg-slate-200 text-emerald-700',
+    monoBlockDark: 'bg-slate-900 text-emerald-300',
+    monoBlockLight: 'bg-slate-50 text-emerald-700',
+    statusOk: 'text-emerald-500',
+    dotOnDark: 'bg-emerald-500',
+    dotOnLight: 'bg-emerald-600',
+    sun: 'text-yellow-400',
+  },
+  'options-desk': {
+    btn: 'bg-indigo-600 hover:bg-indigo-500',
+    pillActive: 'bg-indigo-600 text-white shadow-sm',
+    focusBorder: 'focus:border-indigo-500',
+    accentInput: 'accent-indigo-600',
+    textDark: 'text-indigo-400',
+    textLight: 'text-indigo-700',
+    textSoftDark: 'text-indigo-300',
+    textSoftLight: 'text-indigo-700',
+    chipActiveDark: 'bg-slate-700 text-indigo-400',
+    chipActiveLight: 'bg-slate-200 text-indigo-700',
+    monoBlockDark: 'bg-slate-900 text-indigo-300',
+    monoBlockLight: 'bg-slate-50 text-indigo-700',
+    statusOk: 'text-indigo-500',
+    dotOnDark: 'bg-indigo-500',
+    dotOnLight: 'bg-indigo-600',
+    sun: 'text-yellow-400',
+  },
+};
+
+/** Dark surface differs slightly between product palettes (merge-ready). */
+const SURFACE = {
+  fundamentals: { darkBg: '#020617', lightBg: '#f8fafc', darkFg: '#f1f5f9', lightFg: '#0f172a' },
+  'options-desk': { darkBg: '#0f172a', lightBg: '#f8fafc', darkFg: '#e2e8f0', lightFg: '#0f172a' },
+} as const;
+
+function normalizeColorTheme(v: unknown): ColorThemeId {
+  return v === 'options-desk' ? 'options-desk' : DEFAULT_COLOR_THEME;
+}
 
 const LS_P = 'sec-dash-prefs';
 const LS_C = 'sec-dash-cache';
 const LS_LANG = 'sec-lang';
 
-const README_QUICKSTART =
-  'https://github.com/daggerok/fundamentals/blob/master/README.md#%D0%B1%D1%8B%D1%81%D1%82%D1%80%D1%8B%D0%B9-%D1%81%D1%82%D0%B0%D1%80%D1%82--quick-start';
+const PROXY_COMMAND = 'bun install -E && bun serve:proxy';
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
     'search.placeholder': 'Ticker or company name…',
     'search.load': 'Load data',
-    'proxy.title': 'Start proxies (required for live SEC data):',
+    'proxy.title': 'LIVE data needs the local SEC proxies.',
     'proxy.retry': '↻ Retry',
-    'proxy.orBun': 'Recommended (pm2, README quick start):',
+    'proxy.orBun': 'Run from the repository root:',
     'error.retry': 'Retry',
     'no.data': 'Enter a ticker (AAPL, MSFT, NVDA…)',
-    'console.toggle': 'Toggle debug console',
+    'console.toggle': 'Open debug panel',
     'metric': 'Metric',
     'section.income': '📊 Income Statement',
     'section.cash': '💰 Cash Flow',
@@ -43,41 +129,68 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.lang': 'Language',
     'tip.settings': 'Settings',
     'tip.view': 'Charts / table',
-    'tip.mode': 'Annual / quarterly',
+    'tip.mode': 'Annual / quarterly / interim reports',
     'tip.search': 'Search ticker',
     'tip.load': 'Load company data',
     'tip.proxy': 'Proxy status (www / data)',
-    'tip.proxyToggle': 'Toggle debug console / proxy log',
+    'tip.proxyToggle': 'Open debug panel',
     'settings.title': 'Settings',
     'settings.display': 'Display',
     'settings.data': 'Data & proxy',
     'settings.debug': 'Debug',
     'settings.theme': 'Theme',
+    'settings.colorTheme': 'Color palette',
+    'settings.colorTheme.hint': 'Shared with Options Desk for a consistent merge-ready UI.',
+    'colorTheme.fundamentals': 'Emerald Ledger',
+    'colorTheme.options-desk': 'Indigo Desk',
     'settings.lang': 'Language',
     'settings.view': 'View',
     'settings.mode': 'Period',
     'settings.source': 'Data source',
+    'settings.preferUsd': 'Prefer USD currency',
+    'settings.preferUsd.hint': 'Use SEC-provided USD for each metric when available; otherwise use the issuer currency. No FX conversion.',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin /data/{TICKER}.json (pre-fetched for GitHub Pages)',
+    'source.cache.hint': 'Same-origin ./data/fundamentals/{TICKER}.json (pre-fetched for GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR via local proxy',
     'tip.source': 'CACHE (static) / LIVE (proxy)',
     'settings.scale': 'Text scale',
-    'settings.console': 'Debug console',
+    'settings.console': 'Debug panel',
     'settings.proxyWww': 'www.sec.gov proxy',
     'settings.proxyWwwUrl': 'www proxy base URL',
     'settings.proxyDataUrl': 'data proxy base URL',
     'settings.proxyReset': 'Reset proxy URLs to defaults',
     'settings.proxyData': 'data.sec.gov proxy',
     'settings.clearCache': 'Clear cached company',
-    'guide.details': 'Setup details (README)',
-    'proxy.actual': 'This app uses dual local-cors-proxy (www:8011 + data:8012) via bun start / bun run serve, or single Bun proxy: bun ./scripts/sec-proxy.ts + bun run serve:app.',
+    'proxy.actual': 'Start both SEC proxies with one command:',
+    'debug.title': 'Debug',
+    'debug.overview': 'Overview',
+    'debug.reporting': 'Reporting',
+    'debug.connection': 'Data connection',
+    'debug.activity': 'Recent activity',
+    'debug.status': 'Status',
+    'debug.company': 'Company',
+    'debug.source': 'Source',
+    'debug.period': 'Period',
+    'debug.primaryCurrency': 'Primary currency',
+    'debug.preferUsd': 'Prefer USD',
+    'debug.currencyScope': 'Available currencies are response-wide; currency preference is applied separately to each recognized metric.',
+    'debug.taxonomies': 'Taxonomies',
+    'debug.reports': 'Reports',
+    'debug.currencies': 'Currencies',
+    'debug.used': 'Used',
+    'debug.available': 'Available',
+    'debug.ready': 'Ready',
+    'debug.loading': 'Loading',
+    'debug.idle': 'Idle',
+    'debug.none': 'No activity yet',
     'cache.restored': 'Restored from cache',
     'settings.close': 'Close',
     'view.charts': 'Charts',
     'view.table': 'Table',
     'mode.annual': 'Annual',
     'mode.quarterly': 'Quarterly',
+    'mode.interim': 'Interim (6-K)',
     'theme.dark': 'Dark',
     'theme.light': 'Light',
     'on': 'On',
@@ -124,12 +237,12 @@ const translations: Record<Language, Record<string, string>> = {
   ru: {
     'search.placeholder': 'Тикер или название компании…',
     'search.load': 'Загрузить',
-    'proxy.title': 'Запустите прокси (нужны для live SEC data):',
+    'proxy.title': 'Для LIVE-данных нужны локальные SEC-прокси.',
     'proxy.retry': '↻ Повтор',
-    'proxy.orBun': 'Рекомендуется (pm2, README quick start):',
+    'proxy.orBun': 'Запустите из корня репозитория:',
     'error.retry': 'Повтор',
     'no.data': 'Введите тикер (AAPL, MSFT, NVDA…)',
-    'console.toggle': 'Консоль отладки',
+    'console.toggle': 'Открыть панель отладки',
     'metric': 'Метрика',
     'section.income': '📊 Отчёт о прибылях и убытках',
     'section.cash': '💰 Денежный поток',
@@ -139,41 +252,68 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.lang': 'Язык',
     'tip.settings': 'Настройки',
     'tip.view': 'Графики / таблица',
-    'tip.mode': 'Годовой / квартальный',
+    'tip.mode': 'Годовой / квартальный / промежуточный отчёт',
     'tip.search': 'Поиск тикера',
     'tip.load': 'Загрузить данные компании',
     'tip.proxy': 'Статус прокси (www / data)',
-    'tip.proxyToggle': 'Консоль прокси / отладка',
+    'tip.proxyToggle': 'Открыть панель отладки',
     'settings.title': 'Настройки',
     'settings.display': 'Отображение',
     'settings.data': 'Данные и прокси',
     'settings.debug': 'Отладка',
     'settings.theme': 'Тема',
+    'settings.colorTheme': 'Цветовая палитра',
+    'settings.colorTheme.hint': 'Общая с Options Desk — единый UI при будущем слиянии.',
+    'colorTheme.fundamentals': 'Изумрудный Ledger',
+    'colorTheme.options-desk': 'Индиго Desk',
     'settings.lang': 'Язык',
     'settings.view': 'Вид',
     'settings.mode': 'Период',
     'settings.source': 'Источник данных',
+    'settings.preferUsd': 'Предпочитать валюту USD',
+    'settings.preferUsd.hint': 'Использовать предоставленные SEC значения в USD для каждой метрики, когда они доступны; иначе использовать валюту эмитента. Без FX-конвертации.',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin /data/{TICKER}.json (префетч для GitHub Pages)',
+    'source.cache.hint': 'Same-origin ./data/fundamentals/{TICKER}.json (префетч для GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR через локальный прокси',
     'tip.source': 'CACHE (статика) / LIVE (прокси)',
     'settings.scale': 'Масштаб текста',
-    'settings.console': 'Консоль отладки',
+    'settings.console': 'Панель отладки',
     'settings.proxyWww': 'Прокси www.sec.gov',
     'settings.proxyWwwUrl': 'URL прокси www',
     'settings.proxyDataUrl': 'URL прокси data',
     'settings.proxyReset': 'Сбросить URL прокси',
     'settings.proxyData': 'Прокси data.sec.gov',
     'settings.clearCache': 'Очистить кэш компании',
-    'guide.details': 'Подробности (README)',
-    'proxy.actual': 'Приложение использует dual local-cors-proxy (www:8011 + data:8012) через bun start / bun run serve, либо один Bun-прокси: bun ./scripts/sec-proxy.ts + bun run serve:app.',
+    'proxy.actual': 'Запустите оба SEC-прокси одной командой:',
+    'debug.title': 'Отладка',
+    'debug.overview': 'Обзор',
+    'debug.reporting': 'Отчётность',
+    'debug.connection': 'Подключение к данным',
+    'debug.activity': 'Последние события',
+    'debug.status': 'Статус',
+    'debug.company': 'Компания',
+    'debug.source': 'Источник',
+    'debug.period': 'Период',
+    'debug.primaryCurrency': 'Основная валюта',
+    'debug.preferUsd': 'Предпочитать USD',
+    'debug.currencyScope': 'Доступные валюты указаны для всего ответа; предпочтение валюты применяется отдельно к каждой распознанной метрике.',
+    'debug.taxonomies': 'Таксономии',
+    'debug.reports': 'Отчёты',
+    'debug.currencies': 'Валюты',
+    'debug.used': 'Использовано',
+    'debug.available': 'Доступно',
+    'debug.ready': 'Готово',
+    'debug.loading': 'Загрузка',
+    'debug.idle': 'Ожидание',
+    'debug.none': 'Событий пока нет',
     'cache.restored': 'Восстановлено из кэша',
     'settings.close': 'Закрыть',
     'view.charts': 'Графики',
     'view.table': 'Таблица',
     'mode.annual': 'Годовой',
     'mode.quarterly': 'Квартальный',
+    'mode.interim': 'Промежуточный (6-K)',
     'theme.dark': 'Тёмная',
     'theme.light': 'Светлая',
     'on': 'Вкл',
@@ -258,7 +398,13 @@ const CON: Record<string, string[]> = {
     'NetIncomeLossAvailableToCommonStockholdersBasic',
     'ProfitLoss',
   ],
-  eps: ['EarningsPerShareBasic', 'EarningsPerShareDiluted'],
+  eps: [
+    'EarningsPerShareBasic',
+    'EarningsPerShareDiluted',
+    // IFRS
+    'BasicEarningsLossPerShare',
+    'DilutedEarningsLossPerShare',
+  ],
   ocf: [
     'NetCashProvidedByUsedInOperatingActivities',
     'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations',
@@ -282,6 +428,7 @@ const CON: Record<string, string[]> = {
     // IFRS
     'DepreciationAndAmortisationExpense',
     'DepreciationExpense',
+    'AmortisationExpense',
   ],
   dividendsPaid: [
     'PaymentsOfDividends',
@@ -312,15 +459,20 @@ const CON: Record<string, string[]> = {
     'CashCashEquivalentsAndShortTermInvestments',
     'CashAndCashEquivalents',
   ],
-  shortTermDebt: ['ShortTermBorrowings', 'DebtCurrent'],
-  longTermDebt: ['LongTermDebt', 'LongTermDebtNoncurrent'],
+  shortTermDebt: ['ShortTermBorrowings', 'DebtCurrent', 'ShorttermBorrowings'],
+  longTermDebt: ['LongTermDebt', 'LongTermDebtNoncurrent', 'LongtermBorrowings'],
   inventory: ['InventoryNet', 'Inventories'],
   receivables: [
     'AccountsReceivableNetCurrent',
     'AccountsReceivableNet',
     'TradeAndOtherCurrentReceivables',
+    'CurrentTradeReceivables',
   ],
-  payables: ['AccountsPayableCurrent', 'TradeAndOtherCurrentPayables'],
+  payables: [
+    'AccountsPayableCurrent',
+    'TradeAndOtherCurrentPayables',
+    'TradeAndOtherCurrentPayablesToTradeSuppliers',
+  ],
   goodwill: ['Goodwill'],
   intangibles: ['IntangibleAssetsNetExcludingGoodwill', 'IntangibleAssetsOtherThanGoodwill'],
   ppe: ['PropertyPlantAndEquipmentNet', 'PropertyPlantAndEquipment'],
@@ -328,6 +480,8 @@ const CON: Record<string, string[]> = {
     'CommonStockSharesOutstanding',
     'WeightedAverageNumberOfShareOutstandingBasicAndDiluted',
     'WeightedAverageNumberOfDilutedSharesOutstanding',
+    'WeightedAverageShares',
+    'AdjustedWeightedAverageShares',
   ],
   rnd: ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'],
   sga: ['SellingGeneralAndAdministrativeExpense'],
@@ -468,7 +622,7 @@ function isGitHubPagesHost(): boolean {
 }
 
 function defaultDataSource(): DataSource {
-  // GitHub Pages → cache (static /data/*.json), local dev → live (proxy)
+  // GitHub Pages → cache (static data/*.json), local dev → live (proxy)
   return isGitHubPagesHost() ? 'cache' : 'live';
 }
 
@@ -541,25 +695,12 @@ async function probe(cands: string[], path: string): Promise<{ base: string; res
   throw new Error('Proxy not reachable:\n' + e.join('\n'));
 }
 
-function normalizeFacts(raw: any): any {
-  if (!raw) return null;
-  // raw may already be inner facts map { us-gaap, ifrs-full, ... }
-  if (raw['us-gaap'] || raw['ifrs-full']) return raw;
-  // raw may be full companyfacts payload { facts: { us-gaap, ifrs-full } }
-  if (raw.facts) {
-    if (raw.facts['us-gaap'] || raw.facts['ifrs-full']) return raw.facts;
-    // defensive: fact map may be already nested differently
-    return raw.facts;
-  }
-  return raw;
-}
-
-/** options-desk-style static file: /data/{TICKER}.json → { symbol, cik, title, facts } */
+/** options-desk-style static file: data/{TICKER}.json → { symbol, cik, title, facts } */
 async function loadStaticFacts(sym: string): Promise<{
   facts: any;
   company: { ticker: string; title: string; cik: string };
 } | null> {
-  const url = `/data/${encodeURIComponent(sym)}.json`;
+  const url = staticDataUrl(`${sym}.json`, document.baseURI);
   try {
     const r = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!r.ok) return null;
@@ -568,7 +709,7 @@ async function loadStaticFacts(sym: string): Promise<{
     if (ct.includes('text/html')) return null;
     const doc = await r.json();
     const facts = normalizeFacts(doc.facts || doc);
-    if (!facts?.['us-gaap'] && !facts?.['ifrs-full']) return null;
+    if (!hasUsableFacts(facts)) return null;
     const ticker = String(doc.ticker || doc.symbol || sym).toUpperCase();
     const cik = String(doc.cik || '').padStart(10, '0');
     const title = doc.title || doc.entityName || ticker;
@@ -579,78 +720,68 @@ async function loadStaticFacts(sym: string): Promise<{
 }
 
 async function loadStaticManifest(): Promise<{
-  files: Record<string, string>;
+  /** Ticker symbols present in the static cache (list; legacy map keys also accepted). */
+  files: string[];
   names: Record<string, string>;
   count: number;
 } | null> {
   try {
-    const r = await fetch('/data/index.json', { headers: { Accept: 'application/json' } });
+    const r = await fetch(staticDataUrl('index.json', document.baseURI), {
+      headers: { Accept: 'application/json' },
+    });
     if (!r.ok) return null;
     const doc = await r.json();
+    const rawFiles = doc?.files;
+    const files = Array.isArray(rawFiles)
+      ? rawFiles.map((x: unknown) => String(x)).filter(Boolean)
+      : rawFiles && typeof rawFiles === 'object'
+        ? Object.keys(rawFiles)
+        : [];
     return {
-      files: doc.files || {},
+      files,
       names: doc.names || {},
-      count: doc.count || 0,
+      count: typeof doc.count === 'number' ? doc.count : files.length,
     };
   } catch {
     return null;
   }
 }
 
-function exM(facts: any, keys: string[], mode: Mode) {
-  // Collect taxonomies: us-gaap primary, ifrs-full fallback for ADR 20-F (TSM, etc)
-  const taxonomies: any[] = [];
-  if (facts?.['us-gaap']) taxonomies.push(facts['us-gaap']);
-  if (facts?.['ifrs-full']) taxonomies.push(facts['ifrs-full']);
-  if (facts?.facts?.['us-gaap']) taxonomies.push(facts.facts['us-gaap']);
-  if (facts?.facts?.['ifrs-full']) taxonomies.push(facts.facts['ifrs-full']);
-  // Deduplicate by ref
-  const uniqueTax = Array.from(new Set(taxonomies));
-  if (uniqueTax.length === 0) return [];
-  let r: any[] = [];
-  for (const g of uniqueTax) {
-    for (const k of keys) {
-      const s =
-        g[k]?.units?.USD ||
-        g[k]?.units?.['USD/shares'] ||
-        g[k]?.units?.shares ||
-        g[k]?.units?.pure;
-      if (!s) continue;
-      if (mode === 'Y') r = r.concat(s.filter((p: any) => p.form === '10-K' && p.fp === 'FY'));
-      else
-        r = r.concat(
-          s.filter((p: any) => p.form === '10-Q' || (p.form === '10-K' && p.fp === 'FY')),
-        );
-    }
-  }
-  const m = new Map();
-  const o: Record<string, number> = { FY: 4, Q4: 4, Q3: 3, Q2: 2, Q1: 1 };
-  if (mode === 'Y')
-    r.sort((a, b) => +new Date(b.filed) - +new Date(a.filed)).forEach((x) => {
-      if (!m.has(x.fy)) m.set(x.fy, x);
-    });
-  else
-    r.sort((a, b) => +new Date(b.filed) - +new Date(a.filed)).forEach((x) => {
-      const k = `${x.fy}-${x.fp}`;
-      if (!m.has(k)) m.set(k, x);
-    });
-  return Array.from(m.values()).sort((a: any, b: any) => {
-    if (b.fy !== a.fy) return b.fy - a.fy;
-    return (o[b.fp] || 0) - (o[a.fp] || 0);
-  });
-}
+const exM = extractMetric;
 
-const fV = (v: any, u: string) => {
+type MetricSource = { secUnit: string | null; currency: string | null };
+
+const fV = (v: any, u: string, source?: MetricSource) => {
   if (v == null) return '—';
   if (u === '$M')
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(v / 1e6);
-  if (u === '$') return '$' + Number(v).toFixed(2);
+  if (u === '$') {
+    const value = Number(v).toFixed(2);
+    return source?.currency === 'USD' ? '$' + value : value;
+  }
   if (u === '%') return v.toFixed(1) + '%';
   if (u === 'x') return v.toFixed(2) + 'x';
   if (u === '#M')
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(v / 1e6);
   return String(v);
 };
+
+function displayUnit(unit: string, source?: MetricSource): string {
+  if (unit === '$M' && source?.currency && source.currency !== 'USD') {
+    return `${source.currency} M`;
+  }
+  if (unit === '$' && source?.currency && source.currency !== 'USD') {
+    return source.currency === 'non-USD' ? 'non-USD/share' : `${source.currency}/share`;
+  }
+  return unit;
+}
+
+function metricTitle(label: string, unit: string, source?: MetricSource): string {
+  if ((unit === '$M' || unit === '$') && source?.currency && source.currency !== 'USD') {
+    return `${label} (${source.currency})`;
+  }
+  return label;
+}
 const fA = (v: any, u: string) => {
   if (v == null) return '—';
   if (u === '$M' || u === '#M') return (v / 1e6).toFixed(0);
@@ -663,98 +794,154 @@ const fA = (v: any, u: string) => {
 const sliderToScale = (v: number) => 0.7 + (v / 100) * 0.8;
 const DEFAULT_SCALE_SLIDER = 50;
 
-function proc(facts: any, mode: Mode) {
-  const ex: any = {};
-  for (const [k, c] of Object.entries(CON)) ex[k] = exM(facts, c, mode);
+function proc(facts: any, mode: Mode, preferUsd: boolean) {
+  const primaryCurrency = detectPrimaryCurrency(facts, mode);
+  const ex: Record<string, any[]> = {};
+  for (const [key, concepts] of Object.entries(CON)) {
+    ex[key] = exM(facts, concepts, mode, { preferUsd, preferredCurrency: primaryCurrency });
+  }
   const allE = Object.values(ex).flat() as any[];
-  let pK: any[];
-  if (mode === 'Y') pK = [...new Set(allE.map((d) => d.fy))].sort((a: any, b: any) => a - b);
-  else {
-    pK = [...new Set(allE.map((d) => `${d.fy}-${d.fp}`))];
+  const source: Record<string, MetricSource> = {};
+  for (const [key, rows] of Object.entries(ex)) {
+    const first = rows[0];
+    source[key] = {
+      secUnit: first?._secUnit || null,
+      currency: first?._currency || null,
+    };
+  }
+
+  const pK = [...new Set(allE.map((row) => row._periodKey).filter(Boolean))];
+  if (mode === 'I') {
+    pK.sort((a, b) => String(a).localeCompare(String(b)));
+  } else {
     pK.sort((a, b) => {
-      const [ay, af] = String(a).split('-'),
-        [by, bf] = String(b).split('-');
+      const [ay, af = 'FY'] = String(a).split('-'),
+        [by, bf = 'FY'] = String(b).split('-');
       if (ay !== by) return Number(ay) - Number(by);
-      const o: any = { Q1: 1, Q2: 2, Q3: 3, FY: 4, Q4: 4 };
-      return (o[af] || 0) - (o[bf] || 0);
+      const order: Record<string, number> = { Q1: 1, Q2: 2, Q3: 3, FY: 4, Q4: 4 };
+      return (order[af] || 0) - (order[bf] || 0);
     });
   }
-  const gv = (k: string, pk: any) => {
-    const a = ex[k] || [];
-    if (mode === 'Y') return a.find((d: any) => d.fy === pk)?.val;
-    const [fy, fp] = String(pk).split('-');
-    return a.find((d: any) => d.fy === Number(fy) && d.fp === fp)?.val;
+
+  const periodLabels = new Map<string, string>();
+  for (const row of allE) {
+    if (row._periodKey && row._periodLabel && !periodLabels.has(row._periodKey)) {
+      periodLabels.set(row._periodKey, row._periodLabel);
+    }
+  }
+  const gv = (key: string, periodKey: any) =>
+    ex[key]?.find((row: any) => row._periodKey === periodKey)?.val;
+  const gl = (periodKey: any) => periodLabels.get(String(periodKey)) || String(periodKey);
+  const currency = (key: string) => source[key]?.currency || null;
+  const compatible = (...keys: string[]) => {
+    const currencies = keys.map(currency).filter(Boolean);
+    return new Set(currencies).size <= 1;
   };
-  const gl = (pk: any) => {
-    if (mode === 'Y') return String(pk);
-    const [fy, fp] = String(pk).split('-');
-    return fp === 'FY' ? fy : `${fy} ${fp}`;
-  };
+
   const ms: any = {};
-  const ak = new Set<string>();
-  SEC.forEach((s) => s.metrics.forEach((mt) => ak.add(mt.key)));
-  for (const k of ak) ms[k] = pK.map((pk) => ({ label: gl(pk), value: gv(k, pk), periodKey: pk }));
-  const cs = (k: string) =>
-    pK.map((pk) => {
-      const rev = gv('revenue', pk),
-        gp = gv('grossProfit', pk),
-        ni = gv('netIncome', pk),
-        oi = gv('operatingIncome', pk),
-        ocf = gv('ocf', pk),
-        cx = gv('capex', pk),
-        eq = gv('equity', pk),
-        ast = gv('assets', pk),
-        ltd = gv('longTermDebt', pk),
-        std = gv('shortTermDebt', pk),
-        ca = gv('currentAssets', pk),
-        cl = gv('currentLiabilities', pk),
-        sh = gv('sharesOut', pk);
-      let v: any;
-      switch (k) {
+  const metricKeys = new Set<string>();
+  SEC.forEach((section) => section.metrics.forEach((metric) => metricKeys.add(metric.key)));
+  for (const key of metricKeys) {
+    ms[key] = pK.map((periodKey) => ({
+      label: gl(periodKey),
+      value: gv(key, periodKey),
+      periodKey,
+    }));
+  }
+
+  const computedSource: Record<string, MetricSource> = {};
+  const computedCurrency = (key: string): string | null => {
+    switch (key) {
+      case 'fcf':
+      case 'fcfPerShare':
+        return compatible('ocf', 'capex') ? currency('ocf') || currency('capex') : null;
+      case 'revenuePerShare':
+        return currency('revenue');
+      default:
+        return null;
+    }
+  };
+
+  const cs = (key: string) => {
+    computedSource[key] = {
+      secUnit: null,
+      currency: computedCurrency(key),
+    };
+    return pK.map((periodKey) => {
+      const rev = gv('revenue', periodKey),
+        gp = gv('grossProfit', periodKey),
+        ni = gv('netIncome', periodKey),
+        oi = gv('operatingIncome', periodKey),
+        ocf = gv('ocf', periodKey),
+        cx = gv('capex', periodKey),
+        eq = gv('equity', periodKey),
+        ast = gv('assets', periodKey),
+        ltd = gv('longTermDebt', periodKey),
+        std = gv('shortTermDebt', periodKey),
+        ca = gv('currentAssets', periodKey),
+        cl = gv('currentLiabilities', periodKey),
+        sh = gv('sharesOut', periodKey);
+      let value: any;
+      switch (key) {
         case 'grossMargin':
-          v = gp != null && rev != null && rev ? (gp / rev) * 100 : null;
+          value = compatible('grossProfit', 'revenue') && gp != null && rev ? (gp / rev) * 100 : null;
           break;
         case 'netMargin':
-          v = ni != null && rev != null && rev ? (ni / rev) * 100 : null;
+          value = compatible('netIncome', 'revenue') && ni != null && rev ? (ni / rev) * 100 : null;
           break;
         case 'opMargin':
-          v = oi != null && rev != null && rev ? (oi / rev) * 100 : null;
+          value = compatible('operatingIncome', 'revenue') && oi != null && rev ? (oi / rev) * 100 : null;
           break;
         case 'fcf':
-          v = ocf != null && cx != null ? ocf - cx : null;
+          value = compatible('ocf', 'capex') && ocf != null && cx != null ? ocf - cx : null;
           break;
         case 'roe':
-          v = ni != null && eq != null && eq ? (ni / eq) * 100 : null;
+          value = compatible('netIncome', 'equity') && ni != null && eq ? (ni / eq) * 100 : null;
           break;
         case 'roa':
-          v = ni != null && ast != null && ast ? (ni / ast) * 100 : null;
+          value = compatible('netIncome', 'assets') && ni != null && ast ? (ni / ast) * 100 : null;
           break;
         case 'debtToEquity': {
-          const d = (ltd || 0) + (std || 0);
-          v = d && eq ? d / eq : null;
+          const currenciesMatch = compatible('longTermDebt', 'shortTermDebt', 'equity');
+          const debt = (ltd || 0) + (std || 0);
+          value = currenciesMatch && debt && eq ? debt / eq : null;
           break;
         }
         case 'currentRatio':
-          v = ca != null && cl != null && cl ? ca / cl : null;
+          value = compatible('currentAssets', 'currentLiabilities') && ca != null && cl ? ca / cl : null;
           break;
         case 'revenuePerShare':
-          v = rev != null && sh ? rev / sh : null;
+          value = rev != null && sh ? rev / sh : null;
           break;
         case 'fcfPerShare': {
-          const f = ocf != null && cx != null ? ocf - cx : null;
-          v = f != null && sh ? f / sh : null;
+          const fcf = compatible('ocf', 'capex') && ocf != null && cx != null ? ocf - cx : null;
+          value = fcf != null && sh ? fcf / sh : null;
           break;
         }
         default:
-          v = null;
+          value = null;
       }
-      return { label: gl(pk), value: v, periodKey: pk };
+      return { label: gl(periodKey), value, periodKey };
     });
+  };
+
   const cS: any = {};
-  SEC.forEach((s) => (s.computed || []).forEach((c) => {
-    cS[c.key] = cs(c.key);
-  }));
-  return { metricSeries: ms, computedSeries: cS, periodKeys: pK, getLabel: gl };
+  SEC.forEach((section) =>
+    (section.computed || []).forEach((computed) => {
+      cS[computed.key] = cs(computed.key);
+    }),
+  );
+  return {
+    metricSeries: ms,
+    computedSeries: cS,
+    metricSource: source,
+    computedSource,
+    reporting: inspectReporting(facts, allE),
+    primaryCurrency,
+    preferUsd,
+    periodKeys: pK,
+    getLabel: gl,
+  };
 }
 
 const MiniChart = ({
@@ -762,6 +949,7 @@ const MiniChart = ({
   color,
   unit,
   label,
+  source,
   dark,
   scale,
 }: {
@@ -769,6 +957,7 @@ const MiniChart = ({
   color: { line: string; fill: string };
   unit: string;
   label: string;
+  source?: MetricSource;
   dark: boolean;
   scale: number;
 }) => {
@@ -784,7 +973,32 @@ const MiniChart = ({
     setCW(cRef.current.clientWidth);
     return () => ro.disconnect();
   }, []);
-  if (valid.length < 2) return null;
+  if (valid.length === 0) return null;
+  if (valid.length === 1) {
+    const point = valid[0];
+    return (
+      <div
+        ref={cRef}
+        className={`rounded-lg p-4 border text-center ${dark ? 'bg-slate-900/50 border-slate-700/30' : 'bg-white/60 border-slate-200'}`}
+      >
+        <div
+          className={`font-medium ${dark ? 'text-slate-400' : 'text-slate-600'}`}
+          style={{ fontSize: Math.round(12 * scale) }}
+        >
+          {label}
+        </div>
+        <div className="mt-3 font-mono font-bold" style={{ color: color.line, fontSize: Math.round(20 * scale) }}>
+          {fV(point.value, unit, source)}
+          <span className={`ml-1 text-xs font-normal ${dark ? 'text-slate-500' : 'text-slate-500'}`}>
+            {displayUnit(unit, source)}
+          </span>
+        </div>
+        <div className={`mt-1 text-xs ${dark ? 'text-slate-500' : 'text-slate-500'}`}>
+          {point.label}
+        </div>
+      </div>
+    );
+  }
   const ANG = 35,
     RAD = (ANG * Math.PI) / 180;
   const fs = Math.round(7 * scale),
@@ -880,12 +1094,14 @@ const Pill = ({
   onChange,
   dark,
   title,
+  accent,
 }: {
   value: string;
   options: PillOption[];
   onChange: (k: string) => void;
   dark: boolean;
   title?: string;
+  accent: AccentPalette;
 }) => (
   <div
     title={title}
@@ -901,7 +1117,7 @@ const Pill = ({
           onClick={() => onChange(k)}
           className={`px-2.5 py-1 rounded-md text-sm font-bold leading-none transition-all ${
             value === k
-              ? 'bg-emerald-500 text-white shadow-sm'
+              ? accent.pillActive
               : dark
                 ? 'text-slate-400 hover:text-slate-200'
                 : 'text-slate-500 hover:text-slate-700'
@@ -925,7 +1141,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const [showDebug, setShowDebug] = useState(!!prefs.showDebug);
+  // Menus are session UI only: both start closed after a hard refresh.
+  const [showDebug, setShowDebug] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [company, setCompany] = useState<any>(cached?.company || null);
   const [tickers, setTickers] = useState<any>(null);
@@ -946,10 +1163,15 @@ function App() {
   const [dataSource, setDataSource] = useState<DataSource>(
     () => (prefs.dataSource as DataSource) || defaultDataSource(),
   );
+  const [preferUsd, setPreferUsd] = useState<boolean>(() => prefs.preferUsd === true);
   const [view, setView] = useState<View>(prefs.view || 'C');
   const [dark, setDark] = useState(prefs.dark !== false);
+  const [colorTheme, setColorTheme] = useState<ColorThemeId>(() =>
+    normalizeColorTheme(prefs.colorTheme),
+  );
   const [factsCache, setFactsCache] = useState<any>(cached?.facts || null);
   const [pd, setPd] = useState<any>(null);
+  const [reporting, setReporting] = useState<ReportingInfo | null>(null);
   const [sug, setSug] = useState<any[]>([]);
   const [showSug, setShowSug] = useState(false);
   const [selIdx, setSelIdx] = useState(-1);
@@ -957,6 +1179,7 @@ function App() {
   const iRef = useRef<HTMLInputElement>(null);
   const loadBtnRef = useRef<HTMLButtonElement>(null);
   const sRef = useRef<HTMLDivElement>(null);
+  const debugRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   const scale = sliderToScale(scaleSlider);
@@ -973,7 +1196,9 @@ function App() {
       setCompany(comp);
       setFactsCache(facts);
       setTicker(comp.ticker || prefs.ticker || 'AAPL');
-      setPd(proc(facts, mode));
+      const processed = proc(facts, mode, preferUsd);
+      setPd(processed);
+      setReporting(processed.reporting);
       setDataOk(true);
       log(`✅ Restored ${comp.ticker} (cache)`);
     }
@@ -981,8 +1206,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    sp({ ticker, mode, view, dark, showDebug, scaleSlider, dataSource });
-  }, [ticker, mode, view, dark, showDebug, scaleSlider, dataSource]);
+    sp({ ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd });
+  }, [ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd]);
 
   // Keep last loaded companyfacts in localStorage across reloads/close
   useEffect(() => {
@@ -992,11 +1217,11 @@ function App() {
   useEffect(() => {
     const onLeave = () => {
       if (company && factsCache) sc({ facts: factsCache, company });
-      sp({ ticker, mode, view, dark, showDebug, scaleSlider, dataSource });
+      sp({ ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd });
     };
     window.addEventListener('beforeunload', onLeave);
     return () => window.removeEventListener('beforeunload', onLeave);
-  }, [company, factsCache, ticker, mode, view, dark, showDebug, scaleSlider, dataSource]);
+  }, [company, factsCache, ticker, mode, view, dark, scaleSlider, dataSource, preferUsd]);
 
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
@@ -1011,16 +1236,21 @@ function App() {
   }, [dataProxyUrl]);
 
   useEffect(() => {
+    const surface = SURFACE[colorTheme];
     document.documentElement.classList.toggle('dark', dark);
-    document.documentElement.style.backgroundColor = dark ? '#020617' : '#f8fafc';
-    document.documentElement.style.color = dark ? '#f1f5f9' : '#0f172a';
-    document.body.style.backgroundColor = dark ? '#020617' : '#f8fafc';
-    document.body.style.color = dark ? '#f1f5f9' : '#0f172a';
-  }, [dark]);
+    document.documentElement.dataset.palette = colorTheme;
+    document.documentElement.style.backgroundColor = dark ? surface.darkBg : surface.lightBg;
+    document.documentElement.style.color = dark ? surface.darkFg : surface.lightFg;
+    document.body.style.backgroundColor = dark ? surface.darkBg : surface.lightBg;
+    document.body.style.color = dark ? surface.darkFg : surface.lightFg;
+  }, [dark, colorTheme]);
 
   useEffect(() => {
-    if (factsCache) setPd(proc(normalizeFacts(factsCache), mode));
-  }, [mode, factsCache]);
+    if (!factsCache) return;
+    const processed = proc(normalizeFacts(factsCache), mode, preferUsd);
+    setPd(processed);
+    setReporting(processed.reporting);
+  }, [mode, factsCache, preferUsd]);
 
   // After tickers load, enable load button focus if input already has a symbol
   useEffect(() => {
@@ -1041,16 +1271,10 @@ function App() {
         !iRef.current.contains(e.target as Node)
       )
         setShowSug(false);
-      if (
-        showSettings &&
-        settingsRef.current &&
-        !settingsRef.current.contains(e.target as Node)
-      )
-        setShowSettings(false);
     };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
-  }, [showSug, showSettings]);
+  }, [showSug]);
 
   const init = async () => {
     setTkL(true);
@@ -1061,7 +1285,7 @@ function App() {
       // Prefer static tickers on GitHub Pages
       let data: any = null;
       try {
-        const r = await fetch('/data/company_tickers.json');
+        const r = await fetch(staticDataUrl('company_tickers.json', document.baseURI));
         if (r.ok) {
           data = await r.json();
           const n = data && typeof data === 'object' ? Object.keys(data).length : 0;
@@ -1125,6 +1349,7 @@ function App() {
     if (!opts?.keepPrevious) {
       setCompany(null);
       setPd(null);
+      setReporting(null);
       setFactsCache(null);
     }
     if (!sym) return;
@@ -1147,7 +1372,7 @@ function App() {
         };
       }
       if (!co) {
-        // CACHE may still have data/{TICKER}.json even if ticker map is stubby
+        // CACHE may still have ./data/fundamentals/{TICKER}.json even if ticker map is stubby
         if (dataSource === 'cache') {
           const cachedFile = await loadStaticFacts(sym);
           if (cachedFile) {
@@ -1155,10 +1380,12 @@ function App() {
             setWwwOk(true);
             setFactsCache(cachedFile.facts);
             setCompany(cachedFile.company);
-            setPd(proc(cachedFile.facts, mode));
+            const processed = proc(cachedFile.facts, mode, preferUsd);
+            setPd(processed);
+            setReporting(processed.reporting);
             sc({ facts: cachedFile.facts, company: cachedFile.company });
             log(`${sym} → CIK ${cachedFile.company.cik}`);
-            log(`✅ CACHE /data/${sym}.json`);
+            log(`✅ CACHE ./data/fundamentals/${sym}.json`);
             log('✅ Done');
             return;
           }
@@ -1168,7 +1395,7 @@ function App() {
       const cik = String(co.cik_str ?? co.cik).padStart(10, '0');
       log(`${sym} → CIK ${cik}`);
 
-      // --- CACHE mode: same-origin /data/{TICKER}.json (options-desk pattern) ---
+      // --- CACHE mode: same-origin ./data/fundamentals/{TICKER}.json (options-desk pattern) ---
       if (dataSource === 'cache') {
         const cachedFile = await loadStaticFacts(sym);
         if (cachedFile) {
@@ -1176,14 +1403,16 @@ function App() {
           setWwwOk(true);
           setFactsCache(cachedFile.facts);
           setCompany(cachedFile.company);
-          setPd(proc(cachedFile.facts, mode));
+          const processed = proc(cachedFile.facts, mode, preferUsd);
+          setPd(processed);
+          setReporting(processed.reporting);
           sc({ facts: cachedFile.facts, company: cachedFile.company });
-          log(`✅ CACHE /data/${sym}.json`);
+          log(`✅ CACHE ./data/fundamentals/${sym}.json`);
           log('✅ Done');
           return;
         }
         // fall through to LIVE if static miss (and log)
-        log(`CACHE miss /data/${sym}.json — trying LIVE proxy`);
+        log(`CACHE miss ./data/fundamentals/${sym}.json — trying LIVE proxy`);
       }
 
       // --- LIVE mode: SEC via proxy ---
@@ -1204,11 +1433,13 @@ function App() {
       if (wwwBase) log(`✅ www proxy: ${wwwBase}`);
       const raw = await res.json();
       const facts = normalizeFacts(raw);
-      if (!facts?.['us-gaap'] && !facts?.['ifrs-full']) throw new Error('No us-gaap/ifrs-full in companyfacts');
+      if (!hasUsableFacts(facts)) throw new Error('No usable fact taxonomies in companyfacts');
       setFactsCache(facts);
       const comp = { title: co.title || raw?.entityName, cik, ticker: sym };
       setCompany(comp);
-      setPd(proc(facts, mode));
+      const processed = proc(facts, mode, preferUsd);
+      setPd(processed);
+      setReporting(processed.reporting);
       sc({ facts, company: comp });
       log('✅ Done');
     } catch (e: any) {
@@ -1277,14 +1508,22 @@ function App() {
     } else if (e.key === 'Escape') setShowSug(false);
   };
 
-  const bg = dark ? 'bg-slate-950/95 text-slate-100' : 'bg-white/95 text-slate-900';
+  const a = ACCENT[colorTheme];
+  const bg =
+    colorTheme === 'fundamentals'
+      ? dark
+        ? 'bg-slate-950/95 text-slate-100'
+        : 'bg-white/95 text-slate-900'
+      : dark
+        ? 'bg-slate-900/95 text-slate-100'
+        : 'bg-white/95 text-slate-900';
   const bdr = dark ? 'border-slate-800' : 'border-slate-200';
   const card = dark
     ? 'bg-slate-800 border-slate-600 text-slate-100'
     : 'bg-white border-slate-200 text-slate-900 shadow-sm';
   const inp = dark
-    ? 'bg-slate-800 border-slate-700 text-emerald-400'
-    : 'bg-slate-50 border-slate-300 text-emerald-700';
+    ? `bg-slate-800 border-slate-700 ${a.textDark}`
+    : `bg-slate-50 border-slate-300 ${a.textLight}`;
   const mt = dark ? 'text-slate-400' : 'text-slate-500';
   const t1 = dark ? 'text-slate-100' : 'text-slate-800';
   const t2 = dark ? 'text-slate-300' : 'text-slate-600';
@@ -1295,47 +1534,214 @@ function App() {
   const sugBg = dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200 shadow-lg';
   const sugH = dark ? 'bg-slate-700' : 'bg-slate-100';
   const sugH2 = dark ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50';
-  const dotOn = dark ? 'bg-emerald-500' : 'bg-emerald-600';
+  const dotOn = dark ? a.dotOnDark : a.dotOnLight;
   const dotOff = dark ? 'bg-slate-600' : 'bg-slate-300';
 
   const tblFs = `${Math.round(14 * scale)}px`;
   const tblHFs = `${Math.round(11 * scale)}px`;
   const tblCellPy = `${Math.round(10 * scale)}px`;
 
-  const guideLink = (
-    <a
-      href={README_QUICKSTART}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-emerald-500 hover:underline text-xs font-semibold"
-    >
-      📖 {t('guide.details', lang)}
-    </a>
-  );
+  const showCurrencyPreference = Boolean(pd?.primaryCurrency && pd.primaryCurrency !== 'USD');
+  const debugStatus = loading || tkL
+    ? t('debug.loading', lang)
+    : error
+      ? `Error: ${error.split('\n')[0]}`
+      : company && dataOk
+        ? t('debug.ready', lang)
+        : t('debug.idle', lang);
 
   return (
     <Fragment>
       <div className={`sticky top-0 z-50 ${bg} backdrop-blur-md border-b ${bdr}`}>
         <div className="px-4 xl:px-8">
           <div className="flex items-center gap-2 sm:gap-3 py-3">
-            {/* 1. Proxy / console toggle (prev runtime left control) */}
-            <button
-              type="button"
-              onClick={() => setShowDebug((p) => !p)}
-              title={t('tip.proxyToggle', lang)}
-              aria-label={t('tip.proxyToggle', lang)}
-              className={`flex-shrink-0 text-xs px-2 py-1.5 rounded-lg transition-colors ${
-                showDebug
-                  ? dark
-                    ? 'bg-slate-700 text-slate-300'
-                    : 'bg-slate-200 text-slate-600'
-                  : dark
-                    ? 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              ⌘
-            </button>
+            {/* 1. Debug popover — overlay, does not move the app */}
+            <div className="relative flex-shrink-0" ref={debugRef}>
+              <button
+                type="button"
+                onClick={() => setShowDebug((open) => !open)}
+                title={t('tip.proxyToggle', lang)}
+                aria-label={t('tip.proxyToggle', lang)}
+                aria-expanded={showDebug}
+                className={`text-xs px-2 py-1.5 rounded-lg transition-colors ${
+                  showDebug
+                    ? dark
+                      ? a.chipActiveDark
+                      : a.chipActiveLight
+                    : dark
+                      ? 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'
+                      : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                ⌘
+              </button>
+
+              {showDebug && (
+                <div
+                  role="dialog"
+                  aria-label={t('debug.title', lang)}
+                  className={`absolute left-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
+                >
+                  <div className={`font-bold text-sm ${t1}`}>⌘ {t('debug.title', lang)}</div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide ${mt}`}>
+                    {t('debug.overview', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} divide-y ${bdr}`}>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <span className={`text-xs ${mt}`}>{t('debug.status', lang)}</span>
+                      <span className={`text-xs font-mono text-right break-words ${error ? 'text-red-500' : loading || tkL ? 'text-amber-500' : a.statusOk}`}>
+                        {debugStatus}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <span className={`text-xs ${mt}`}>{t('debug.company', lang)}</span>
+                      <span className={`text-xs font-mono text-right ${t1}`}>
+                        {company?.ticker || (ticker || '').trim().toUpperCase() || '—'}
+                        {company?.cik ? ` · CIK ${company.cik}` : ''}
+                      </span>
+                    </div>
+                    {company?.title && (
+                      <div className={`px-3 py-2 text-xs break-words ${t2}`}>{company.title}</div>
+                    )}
+                    <div className="grid grid-cols-2 divide-x divide-inherit">
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.source', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>
+                          {dataSource === 'cache' ? 'CACHE' : 'LIVE'}
+                        </div>
+                      </div>
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.period', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>{mode}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 divide-x divide-inherit">
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.primaryCurrency', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>
+                          {pd?.primaryCurrency || '—'}
+                        </div>
+                      </div>
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.preferUsd', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>
+                          {preferUsd ? t('on', lang) : t('off', lang)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('debug.reporting', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} divide-y ${bdr}`}>
+                    {[
+                      {
+                        label: `${t('debug.used', lang)} ${t('debug.taxonomies', lang)}`,
+                        value: reporting?.usedTaxonomies.join(', '),
+                      },
+                      {
+                        label: `${t('debug.used', lang)} ${t('debug.reports', lang)}`,
+                        value: reporting?.usedForms.join(', '),
+                      },
+                      {
+                        label: `${t('debug.used', lang)} ${t('debug.currencies', lang)}`,
+                        value: reporting?.usedCurrencies.join(', '),
+                      },
+                      {
+                        label: `${t('debug.available', lang)} ${t('debug.taxonomies', lang)}`,
+                        value: reporting?.availableTaxonomies.join(', '),
+                      },
+                      {
+                        label: `${t('debug.available', lang)} ${t('debug.reports', lang)}`,
+                        value: reporting?.availableForms.join(', '),
+                      },
+                      {
+                        label: `${t('debug.available', lang)} ${t('debug.currencies', lang)}`,
+                        value: reporting?.availableCurrencies.join(', '),
+                      },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-start justify-between gap-3 px-3 py-2">
+                        <span className={`text-xs ${mt}`}>{row.label}</span>
+                        <span className={`text-xs font-mono text-right break-words ${t1}`}>
+                          {row.value || '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={`text-[10px] ${mt}`}>{t('debug.currencyScope', lang)}</div>
+                  {reporting?.usedTaxonomies.includes('ifrs-full') &&
+                    !reporting.availableTaxonomies.includes('us-gaap') &&
+                    reporting.usedForms.includes('20-F') && (
+                      <div className={`rounded-lg px-3 py-2 text-xs ${dark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-800'}`}>
+                        IFRS (ifrs-full) · 20-F · not US-GAAP/10-K
+                      </div>
+                    )}
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('debug.connection', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} divide-y ${bdr}`}>
+                    {dataSource === 'live' ? (
+                      <>
+                        <div className="px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs ${mt}`}>www.sec.gov</span>
+                            <span className={`text-xs font-mono ${wwwOk ? a.statusOk : 'text-red-500'}`}>
+                              {wwwOk ? '● online' : '● offline'}
+                            </span>
+                          </div>
+                          <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
+                            {wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY}
+                          </div>
+                        </div>
+                        <div className="px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs ${mt}`}>data.sec.gov</span>
+                            <span className={`text-xs font-mono ${dataOk ? a.statusOk : 'text-red-500'}`}>
+                              {dataOk ? '● online' : '● offline'}
+                            </span>
+                          </div>
+                          <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
+                            {dataBase || dataProxyUrl || DEFAULT_DATA_PROXY}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs ${mt}`}>Static cache</span>
+                          <span className={`text-xs font-mono ${dataOk ? a.statusOk : mt}`}>
+                            {dataOk ? '● loaded' : '● waiting'}
+                          </span>
+                        </div>
+                        <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
+                          ./data/fundamentals/{company?.ticker || '{TICKER}'}.json
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('debug.activity', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} p-2 max-h-40 overflow-y-auto ${scCls}`}>
+                    {logs.length ? (
+                      <div className="space-y-1">
+                        {logs.slice(-10).map((entry, index) => (
+                          <div key={`${index}-${entry}`} className={`text-[10px] font-mono whitespace-pre-wrap break-words ${entry.startsWith('❌') ? 'text-red-500' : entry.startsWith('✅') ? a.statusOk : t2}`}>
+                            {entry}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={`text-xs ${mt}`}>{t('debug.none', lang)}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 2. Proxy online indicators */}
             <div
@@ -1367,7 +1773,7 @@ function App() {
                 placeholder={t('search.placeholder', lang)}
                 title={t('tip.search', lang)}
                 aria-label={t('tip.search', lang)}
-                className={`w-full ${inp} border rounded-lg px-3 py-2 font-mono font-bold text-sm focus:outline-none focus:border-emerald-500 transition-colors uppercase`}
+                className={`w-full ${inp} border rounded-lg px-3 py-2 font-mono font-bold text-sm focus:outline-none ${a.focusBorder} transition-colors uppercase`}
                 disabled={!tickers}
               />
               {showSug && sug.length > 0 && (
@@ -1387,7 +1793,7 @@ function App() {
                     >
                       <span
                         className={`font-mono font-bold text-sm w-14 flex-shrink-0 ${
-                          dark ? 'text-emerald-400' : 'text-emerald-700'
+                          dark ? a.textDark : a.textLight
                         }`}
                       >
                         {s.ticker}
@@ -1411,7 +1817,7 @@ function App() {
               disabled={loading || !tickers}
               title={t('tip.load', lang)}
               aria-label={t('tip.load', lang)}
-              className="flex-shrink-0 flex items-center bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-3 sm:px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40"
+              className={`flex-shrink-0 flex items-center ${a.btn} text-white font-bold px-3 sm:px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40`}
             >
               {loading ? (
                 <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
@@ -1434,16 +1840,18 @@ function App() {
               )}
             </button>
 
-            {/* 5. Y / Q */}
+            {/* 5. Y / Q / I (annual / quarterly / foreign interim 6-K) */}
             <div title={t('tip.mode', lang)} className="flex-shrink-0">
               <Pill
                 value={mode}
                 options={[
                   { k: 'Y', l: 'Y' },
                   { k: 'Q', l: 'Q' },
+                  { k: 'I', l: 'I' },
                 ]}
                 onChange={(k) => setMode(k as Mode)}
                 dark={dark}
+                accent={a}
                 title={t('tip.mode', lang)}
               />
             </div>
@@ -1458,6 +1866,7 @@ function App() {
                 ]}
                 onChange={(k) => setView(k as View)}
                 dark={dark}
+                accent={a}
                 title={t('tip.view', lang)}
               />
             </div>
@@ -1472,6 +1881,7 @@ function App() {
                 ]}
                 onChange={(k) => setDataSource(k as DataSource)}
                 dark={dark}
+                accent={a}
                 title={`${t('tip.source', lang)}: ${t(`source.${dataSource}.hint`, lang)}`}
               />
             </div>
@@ -1483,7 +1893,7 @@ function App() {
               title={t('tip.theme', lang)}
               aria-label={t('tip.theme', lang)}
               className={`flex-shrink-0 text-base leading-none px-2 py-1.5 rounded-lg transition-colors ${
-                dark ? 'text-yellow-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
+                dark ? `${a.sun} hover:bg-slate-800` : 'text-slate-500 hover:bg-slate-100'
               }`}
             >
               {dark ? '☀️' : '🌙'}
@@ -1499,6 +1909,7 @@ function App() {
                 ]}
                 onChange={(k) => setLang(k as Language)}
                 dark={dark}
+                accent={a}
                 title={t('tip.lang', lang)}
               />
             </div>
@@ -1507,15 +1918,15 @@ function App() {
             <div className="relative flex-shrink-0" ref={settingsRef}>
               <button
                 type="button"
-                onClick={() => setShowSettings((v) => !v)}
+                onClick={() => setShowSettings((open) => !open)}
                 title={t('tip.settings', lang)}
                 aria-label={t('tip.settings', lang)}
                 aria-expanded={showSettings}
                 className={`flex-shrink-0 text-base leading-none px-2 py-1.5 rounded-lg transition-colors ${
                   showSettings
                     ? dark
-                      ? 'bg-slate-700 text-emerald-400'
-                      : 'bg-slate-200 text-emerald-700'
+                      ? a.chipActiveDark
+                      : a.chipActiveLight
                     : dark
                       ? 'text-slate-300 hover:bg-slate-800'
                       : 'text-slate-600 hover:bg-slate-100'
@@ -1527,17 +1938,7 @@ function App() {
                 <div
                   className={`absolute right-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className={`font-bold text-sm ${t1}`}>⚙️ {t('settings.title', lang)}</div>
-                    <button
-                      type="button"
-                      className={`text-xs px-2 py-1 rounded ${dark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${mt}`}
-                      onClick={() => setShowSettings(false)}
-                      title={t('settings.close', lang)}
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  <div className={`font-bold text-sm ${t1}`}>⚙️ {t('settings.title', lang)}</div>
 
                   <div className={`text-[10px] font-bold uppercase tracking-wide ${mt}`}>
                     {t('settings.display', lang)}
@@ -1552,8 +1953,28 @@ function App() {
                       ]}
                       onChange={(k) => setDark(k === 'dark')}
                       dark={dark}
+                      accent={a}
                       title={t('tip.theme', lang)}
                     />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`} title={t('settings.colorTheme.hint', lang)}>
+                      {t('settings.colorTheme', lang)}
+                    </span>
+                    <Pill
+                      value={colorTheme}
+                      options={[
+                        { k: 'fundamentals', l: '📗' },
+                        { k: 'options-desk', l: '📘' },
+                      ]}
+                      onChange={(k) => setColorTheme(normalizeColorTheme(k))}
+                      dark={dark}
+                      accent={a}
+                      title={t('settings.colorTheme.hint', lang)}
+                    />
+                  </div>
+                  <div className={`text-[10px] ${mt}`}>
+                    {t(`colorTheme.${colorTheme}`, lang)} — {t('settings.colorTheme.hint', lang)}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-xs ${t2}`}>{t('settings.lang', lang)}</span>
@@ -1565,6 +1986,7 @@ function App() {
                       ]}
                       onChange={(k) => setLang(k as Language)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.lang', lang)}
                     />
                   </div>
@@ -1578,6 +2000,7 @@ function App() {
                       ]}
                       onChange={(k) => setView(k as View)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.view', lang)}
                     />
                   </div>
@@ -1588,9 +2011,11 @@ function App() {
                       options={[
                         { k: 'Y', l: 'Y' },
                         { k: 'Q', l: 'Q' },
+                        { k: 'I', l: 'I' },
                       ]}
                       onChange={(k) => setMode(k as Mode)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.mode', lang)}
                     />
                   </div>
@@ -1606,10 +2031,30 @@ function App() {
                       ]}
                       onChange={(k) => setDataSource(k as DataSource)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.source', lang)}
                     />
                   </div>
                   <div className={`text-[10px] ${mt}`}>{t(`source.${dataSource}.hint`, lang)}</div>
+                  {showCurrencyPreference && (
+                    <>
+                      <label
+                        className="flex items-center justify-between gap-3 cursor-pointer"
+                        title={t('settings.preferUsd.hint', lang)}
+                      >
+                        <span className={`text-xs ${t2}`}>{t('settings.preferUsd', lang)}</span>
+                        <input
+                          type="checkbox"
+                          checked={preferUsd}
+                          onChange={(event) => setPreferUsd(event.target.checked)}
+                          className={`h-4 w-4 ${a.accentInput} cursor-pointer`}
+                        />
+                      </label>
+                      <div className={`text-[10px] ${mt}`}>
+                        {t('settings.preferUsd.hint', lang)}
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-xs ${t2}`}>{t('settings.scale', lang)}</span>
@@ -1638,7 +2083,7 @@ function App() {
                       <label className={`text-xs ${t2}`} htmlFor="proxy-www-url">
                         www
                       </label>
-                      <span className={`text-xs font-mono ${wwwOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <span className={`text-xs font-mono ${wwwOk ? a.statusOk : 'text-red-500'}`}>
                         {wwwOk ? '● online' : '● offline'}
                       </span>
                     </div>
@@ -1650,13 +2095,13 @@ function App() {
                       spellCheck={false}
                       title={t('settings.proxyWwwUrl', lang)}
                       placeholder={DEFAULT_WWW_PROXY}
-                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none focus:border-emerald-500`}
+                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none ${a.focusBorder}`}
                     />
                     <div className="flex items-center justify-between gap-2">
                       <label className={`text-xs ${t2}`} htmlFor="proxy-data-url">
                         data
                       </label>
-                      <span className={`text-xs font-mono ${dataOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <span className={`text-xs font-mono ${dataOk ? a.statusOk : 'text-red-500'}`}>
                         {dataOk ? '● online' : '● offline'}
                       </span>
                     </div>
@@ -1668,7 +2113,7 @@ function App() {
                       spellCheck={false}
                       title={t('settings.proxyDataUrl', lang)}
                       placeholder={DEFAULT_DATA_PROXY}
-                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none focus:border-emerald-500`}
+                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none ${a.focusBorder}`}
                     />
                     <div className={`text-[10px] space-y-0.5 font-mono ${mt}`}>
                       <div>
@@ -1707,27 +2152,11 @@ function App() {
                       {t('proxy.retry', lang)}
                     </button>
                   </div>
-                  <div className="grid gap-2">
+                  <div className="space-y-1">
+                    <div className={`text-[10px] ${mt}`}>{t('proxy.actual', lang)}</div>
                     <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bun start  # dual local-cors-proxy 8011/8012 + app`}</pre>
-                    <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011`}</pre>
-                    <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012`}</pre>
-                    <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bun ./scripts/sec-proxy.ts && bun run serve:app`}</pre>
-                    <a
-                      href={README_QUICKSTART}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-emerald-500 hover:underline text-[11px] font-semibold"
-                    >
-                      📖 {t('guide.details', lang)}
-                    </a>
+                      className={`${dark ? a.monoBlockDark : a.monoBlockLight} p-2 rounded text-[11px] font-mono overflow-x-auto`}
+                    >{PROXY_COMMAND}</pre>
                   </div>
                   <button
                     type="button"
@@ -1735,6 +2164,7 @@ function App() {
                       cc();
                       setCompany(null);
                       setPd(null);
+                      setReporting(null);
                       setFactsCache(null);
                       setDataOk(false);
                       log('cache cleared');
@@ -1745,156 +2175,25 @@ function App() {
                     🗑️ {t('settings.clearCache', lang)}
                   </button>
 
-                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
-                    {t('settings.debug', lang)}
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-xs ${t2}`}>{t('settings.console', lang)}</span>
-                    <Pill
-                      value={showDebug ? 'on' : 'off'}
-                      options={[
-                        { k: 'off', l: t('off', lang) },
-                        { k: 'on', l: t('on', lang) },
-                      ]}
-                      onChange={(k) => setShowDebug(k === 'on')}
-                      dark={dark}
-                      title={t('console.toggle', lang)}
-                    />
-                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div className={`console-wrap ${showDebug ? 'open' : ''}`}>
-            <div className="console-inner">
-              <div className="pb-2 -mt-1">
-                <div
-                  className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-nowrap ${scCls}`}
-                >
-                  {(() => {
-                    const parts: React.ReactNode[] = [];
-                    const push = (node: React.ReactNode) => {
-                      if (parts.length) {
-                        parts.push(
-                          <span key={`sep-${parts.length}`} className={dark ? 'text-slate-700' : 'text-slate-300'}>
-                            {' · '}
-                          </span>,
-                        );
-                      }
-                      parts.push(node);
-                    };
-
-                    if (company?.ticker && company?.cik) {
-                      push(
-                        <span key="cik" className={t1}>
-                          {company.ticker} → CIK {company.cik}
-                        </span>,
-                      );
-                    } else if ((ticker || '').trim()) {
-                      push(
-                        <span key="tk" className={mt}>
-                          {(ticker || '').trim().toUpperCase()}
-                        </span>,
-                      );
-                    }
-
-                    push(
-                      <span key="src" className={t1}>
-                        {dataSource === 'cache' ? 'CACHE' : 'LIVE'}
-                      </span>,
-                    );
-                    if (dataSource === 'live') {
-                      const dataUrl = dataBase || dataProxyUrl || DEFAULT_DATA_PROXY;
-                      const wwwUrl = wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY;
-                      push(
-                        <span key="data" className={dataOk ? 'text-emerald-500' : 'text-red-500'}>
-                          {dataOk ? '✅' : '❌'} data proxy: {dataUrl}
-                        </span>,
-                      );
-                      push(
-                        <span key="www" className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>
-                          {wwwOk ? '✅' : '❌'} www proxy: {wwwUrl}
-                        </span>,
-                      );
-                    } else {
-                      push(
-                        <span key="cache" className={dataOk ? 'text-emerald-500' : mt}>
-                          {dataOk ? '✅' : '…'} /data/{'{TICKER}'}.json
-                        </span>,
-                      );
-                    }
-
-                    const last = logs.length ? logs[logs.length - 1] : '';
-                    const done =
-                      last.startsWith('✅ Done') ||
-                      last === '✅ Done' ||
-                      (company && dataOk && !loading && !error);
-                    const failed = last.startsWith('❌') || (!!error && !loading);
-                    if (done) {
-                      push(
-                        <span key="done" className="text-emerald-500">
-                          ✅ Done
-                        </span>,
-                      );
-                    } else if (failed) {
-                      push(
-                        <span key="err" className="text-red-500">
-                          ❌ {error || last.replace(/^❌\s*/, '') || 'Error'}
-                        </span>,
-                      );
-                    } else if (loading || tkL) {
-                      push(
-                        <span key="load" className={mt}>
-                          …
-                        </span>,
-                      );
-                    }
-
-                    return parts.length ? parts : <span className={mt}>—</span>;
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
       <div className="px-4 xl:px-8 py-6">
         {!tickers && !tkL && (
           <div className={`${card} border rounded-xl p-5 mb-6 text-sm max-w-3xl mx-auto`}>
-            <p className={`font-bold mb-2 ${t1}`}>{t('proxy.title', lang)}</p>
-            <p className={`text-xs mb-3 ${t2}`}>{t('proxy.actual', lang)}</p>
-            <p className={`text-xs font-semibold mb-1 ${mt}`}>{t('proxy.orBun', lang)}</p>
+            <p className={`font-bold mb-1 ${t1}`}>{t('proxy.title', lang)}</p>
+            <p className={`text-xs mb-3 ${mt}`}>{t('proxy.orBun', lang)}</p>
             <pre
-              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono mb-3`}
-            >{`bun install -E
-bun stop ; bun kill ; bun ps ; bun start ; bun logs
-# dual local-cors-proxy :8011 www + :8012 data + Parcel`}</pre>
-            <p className={`text-xs font-semibold mb-1 ${mt}`}>Manual dual proxy</p>
-            <div className="grid md:grid-cols-2 gap-3">
-              <pre
-                className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-              >{`bunx local-cors-proxy \
-  --proxyUrl https://www.sec.gov \
-  --port 8011`}</pre>
-              <pre
-                className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-              >{`bunx local-cors-proxy \
-  --proxyUrl https://data.sec.gov \
-  --port 8012`}</pre>
-            </div>
-            <p className={`mt-3 text-xs font-semibold mb-1 ${mt}`}>Single Bun SEC proxy + app</p>
-            <pre
-              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-            >{`bun ./scripts/sec-proxy.ts
-bun run serve:app`}</pre>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button onClick={init} className="text-emerald-500 text-xs hover:underline">
-                {t('proxy.retry', lang)}
-              </button>
-              {guideLink}
-            </div>
+              className={`${dark ? a.monoBlockDark : a.monoBlockLight} p-3 rounded text-xs font-mono overflow-x-auto`}
+            >{PROXY_COMMAND}</pre>
+            <button onClick={init} className={`mt-3 ${a.statusOk} text-xs hover:underline`}>
+              {t('proxy.retry', lang)}
+            </button>
           </div>
         )}
 
@@ -1904,15 +2203,15 @@ bun run serve:app`}</pre>
               <span className="flex-shrink-0 mt-0.5">✕</span>
               <span className="flex-1 font-mono text-xs">{error}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-3 pl-5">
+            {error.includes('Proxy not reachable') && (
+              <pre
+                className={`${dark ? a.monoBlockDark : 'bg-red-50 text-red-700'} ml-5 p-2 rounded text-[11px] font-mono overflow-x-auto`}
+              >{PROXY_COMMAND}</pre>
+            )}
+            <div className="pl-5">
               <button onClick={init} className="text-xs hover:underline font-semibold">
                 {t('error.retry', lang)}
               </button>
-              {guideLink}
-            </div>
-            <div className={`pl-5 text-[11px] space-y-1 ${mt}`}>
-              <div>{t('proxy.actual', lang)}</div>
-              <div className="font-mono text-[10px]">bun start  ·  bun ./scripts/sec-proxy.ts + bun run serve:app</div>
             </div>
           </div>
         )}
@@ -1920,12 +2219,17 @@ bun run serve:app`}</pre>
         {company && !loading && pd && (
           <div className="space-y-6 animate-fade-in">
             {SEC.map((section) => {
-              const { metricSeries, computedSeries } = pd;
+              const { metricSeries, computedSeries, metricSource, computedSource } = pd;
               const allM = [
-                ...section.metrics.map((m) => ({ ...m, series: metricSeries[m.key] })),
+                ...section.metrics.map((m) => ({
+                  ...m,
+                  series: metricSeries[m.key],
+                  source: metricSource[m.key],
+                })),
                 ...(section.computed || []).map((c) => ({
                   ...c,
                   series: computedSeries[c.key],
+                  source: computedSource[c.key],
                 })),
               ].filter((m) => hd(m.series));
               if (!allM.length) return null;
@@ -1970,7 +2274,8 @@ bun run serve:app`}</pre>
                           data={m.series}
                           color={clr}
                           unit={m.unit}
-                          label={metricLabel(m.key, m.label, lang)}
+                          label={metricTitle(metricLabel(m.key, m.label, lang), m.unit, m.source)}
+                          source={m.source}
                           dark={dark}
                           scale={scale}
                         />
@@ -2013,7 +2318,7 @@ bun run serve:app`}</pre>
                               style={{ paddingTop: tblCellPy, paddingBottom: tblCellPy }}
                             >
                               {metricLabel(m.key, m.label, lang)}{' '}
-                              <span className={`text-xs ${mt}`}>({m.unit})</span>
+                              <span className={`text-xs ${mt}`}>({displayUnit(m.unit, m.source)})</span>
                             </td>
                             {m.series.map((d: any, j: number) => (
                               <td
@@ -2023,7 +2328,7 @@ bun run serve:app`}</pre>
                                 }`}
                                 style={{ paddingTop: tblCellPy, paddingBottom: tblCellPy }}
                               >
-                                {fV(d.value, m.unit)}
+                                {fV(d.value, m.unit, m.source)}
                               </td>
                             ))}
                           </tr>

@@ -18,16 +18,17 @@ SEC EDGAR Financial Fundamentals Dashboard — React + TypeScript + Tailwind CSS
 
 ## Быстрый старт / Quick start
 
-Точно как в [fundamentals-runtime](https://github.com/daggerok/fundamentals-runtime) — dual `local-cors-proxy` + app:
+Runtime-compatible dual SEC proxy + app:
 
 ```bash
 git clone https://github.com/daggerok/fundamentals.git
 cd fundamentals
-bun install -E
 
-bun stop ; bun kill ; bun ps ; bun start ; bun logs
+# оба SEC-прокси / both SEC proxies
+bun install -E && bun serve:proxy
 ```
 
+Для локального UI запустите `bun serve:app` в другом терминале.
 Откройте: **http://localhost:1234** (Parcel)  
 Прокси (как в runtime):
 
@@ -36,32 +37,19 @@ bun stop ; bun kill ; bun ps ; bun start ; bun logs
 | **8011** | `www.sec.gov` | `http://localhost:8011/proxy/files/company_tickers.json` |
 | **8012** | `data.sec.gov` | `http://localhost:8012/proxy/api/xbrl/companyfacts/CIK0000320193.json` |
 
-`bun start` поднимает **оба** `local-cors-proxy` + Parcel (`npm run serve` = `serve:proxy-www` + `serve:proxy-data` + `serve:app`).
+`bun serve:proxy` поднимает **оба** Bun SEC-прокси с корректным `User-Agent`; `bun serve:app` отдельно запускает Parcel.
 
 ---
 
 ## Прокси (обязательно для live SEC data)
 
-### Вариант A — dual local-cors-proxy (как fundamentals-runtime) ✅ default
+### Вариант A — dual Bun SEC proxy (runtime-compatible) ✅ default
 
 ```bash
-# Терминал 1
-bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011
-
-# Терминал 2
-bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012
-
-# Терминал 3
-bun run serve:app
+bun install -E && bun serve:proxy
 ```
 
-или одной командой:
-
-```bash
-bun run serve          # parallel: proxy-www + proxy-data + app
-# / pm2:
-bun start
-```
+Команда запускает оба прокси с обязательным SEC `User-Agent`: `www.sec.gov` на `8011` и `data.sec.gov` на `8012`. Для локального UI отдельно выполните `bun serve:app`.
 
 Приложение само **пробивает** кандидатов `http://localhost:{8011,8010,8080,3000,8012}/proxy` (логика как в runtime).
 
@@ -69,24 +57,24 @@ bun start
 
 ```bash
 # Терминал 1
-bun ./scripts/sec-proxy.ts          # MODE=both, port 8012
+bun ./scripts/fundamentals-local-proxy.ts          # MODE=both, port 8012
 
 # Терминал 2
 bun run serve:app
 ```
 
-`scripts/sec-proxy.ts` принимает и runtime-пути (`/proxy/...`), и прямые (`/api/...`, `/files/...`), и выставляет обязательный `User-Agent` для SEC.
+`scripts/fundamentals-local-proxy.ts` принимает и runtime-пути (`/proxy/...`), и прямые (`/api/...`, `/files/...`), и выставляет обязательный `User-Agent` для SEC.
 
 Можно эмулировать два порта runtime:
 
 ```bash
-MODE=www  PORT=8011 bun ./scripts/sec-proxy.ts &
-MODE=data PORT=8012 bun ./scripts/sec-proxy.ts &
+MODE=www  PORT=8011 bun ./scripts/fundamentals-local-proxy.ts &
+MODE=data PORT=8012 bun ./scripts/fundamentals-local-proxy.ts &
 ```
 
 ### Вариант C — Cloudflare Worker (hosted GitHub Pages)
 
-См. `scripts/cloudflare-worker.js` — SEC-релей с CORS + User-Agent.  
+См. `scripts/fundamentals-cloudflare-proxy.js` — SEC-релей с CORS + User-Agent.  
 В UI (Settings ⚙) укажите base URL воркера; app также умеет unified base.
 
 ---
@@ -98,7 +86,7 @@ bun run build
 bun run build-github-pages   # public-url=/fundamentals/
 ```
 
-На GitHub Pages тикеры берутся из статического `data/company_tickers.json` (workflow `update-data.yml`). Company facts по-прежнему требуют прокси / Worker.
+На GitHub Pages тикеры берутся из статического `data/fundamentals/company_tickers.json` (workflow `update-data.yml`). Company facts по-прежнему требуют прокси / Worker.
 
 ---
 
@@ -106,10 +94,10 @@ bun run build-github-pages   # public-url=/fundamentals/
 
 ```bash
 bun install -E
-bun run serve              # dual local-cors-proxy + Parcel (runtime-style)
-bun run serve:app          # только Parcel
-bun ./scripts/sec-proxy.ts # unified Bun proxy
-bun run all                # sec-proxy.ts + Parcel
+bun serve:proxy            # оба Bun SEC-прокси (8011 + 8012)
+bun serve:app              # только Parcel
+bun ./scripts/fundamentals-local-proxy.ts # unified Bun proxy
+bun run all                # fundamentals-local-proxy.ts + Parcel
 bun start / bun ps / bun logs / bun restart / bun stop / bun kill
 bun run build
 bun run build-github-pages
@@ -126,9 +114,9 @@ fundamentals/
 │   ├── index.css
 │   └── main.tsx              # SPA (proxy probe + UI)
 ├── scripts/
-│   ├── sec-proxy.ts          # Bun SEC proxy (runtime-compatible)
-│   ├── cloudflare-worker.js  # hosted SEC proxy
-│   └── fetch_data.py         # pre-fetch company_tickers
+│   ├── fundamentals-local-proxy.ts          # Bun SEC proxy (runtime-compatible)
+│   ├── fundamentals-cloudflare-proxy.js  # hosted SEC proxy
+│   └── fundamentals-data.py         # pre-fetch company_tickers
 ├── data/
 │   ├── company_tickers.json  # static cache for GitHub Pages
 │   └── index.json
@@ -171,37 +159,37 @@ Same pattern as [options-desk](https://github.com/daggerok/options-desk):
 
 ```bash
 # requires uv (https://docs.astral.sh/uv/)
-uv run python scripts/fetch_data.py
+uv run python scripts/fundamentals-data.py
 
 SEC blocks generic User-Agents (HTTP 403). The script defaults to a descriptive
 contact UA. Override if needed:
 
 ```bash
-SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fetch_data.py
+SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fundamentals-data.py
 ```
 
 # or:
 bun run data:fetch
 ```
 
-Writes `data/company_tickers.json` + `data/index.json`.  
+Writes `data/fundamentals/company_tickers.json` + `data/fundamentals/index.json`.  
 GitHub Action **Update SEC data** runs this on a schedule via `astral-sh/setup-uv`.
 
 ---
 
 ## Static CACHE (options-desk pattern)
 
-Pre-fetch SEC companyfacts into `data/{TICKER}.json`, then `postbuild` copies `data/` → `dist/data/` for GitHub Pages.
+Pre-fetch SEC companyfacts into `data/fundamentals/{TICKER}.json`, then `postbuild` copies `data/` → `dist/data/` for GitHub Pages.
 
 ```bash
 # coverage-first: download MISSING tickers from company_tickers.json (then refresh stale)
-MAX_FETCHES=50 uv run python scripts/fetch_data.py
+MAX_FETCHES=50 uv run python scripts/fundamentals-data.py
 
 # or only specific symbols
-TICKERS="AAPL MSFT NVDA" uv run python scripts/fetch_data.py
+TICKERS="AAPL MSFT NVDA" uv run python scripts/fundamentals-data.py
 
 # force re-fetch even if "fresh"
-SKIP_FRESH_HOURS=0 MAX_FETCHES=10 TICKERS="AAPL" uv run python scripts/fetch_data.py
+SKIP_FRESH_HOURS=0 MAX_FETCHES=10 TICKERS="AAPL" uv run python scripts/fundamentals-data.py
 
 bun run build   # ncp → dist/data/
 ```
@@ -210,7 +198,18 @@ bun run build   # ncp → dist/data/
 
 
 In the app **Settings → Data source**:
-- **CACHE** (default on GitHub Pages): load `/data/{TICKER}.json` (no proxy)
-- **LIVE** (default on localhost): SEC via local proxy
+- **CACHE** (default on GitHub Pages): load app-relative `./data/fundamentals/{TICKER}.json`. The browser resolves this to `/fundamentals/data/TSM.json` on this project's Pages deployment and `/data/TSM.json` on localhost.
+- **LIVE** (default on localhost): resolve ticker → CIK with `company_tickers.json`, then fetch SEC companyfacts via the data proxy.
+
+SEC companyfacts payloads are keyed by CIK and do **not** guarantee a `symbol` field. The app keeps the searched ticker from `company_tickers.json`; the pre-fetch script adds `symbol` and `ticker` only to the local cache wrapper.
+
+The report selector supports:
+- **Y** — annual `10-K`, `20-F`, and `40-F` reports.
+- **Q** — quarterly `10-Q` reports, plus annual FY reference points.
+- **I** — foreign interim `6-K` reports, labeled from their actual period (`H1`, `9M`, or date range) rather than pretending they are discrete quarters.
+
+Metric extraction searches every returned taxonomy, including `us-gaap`, `ifrs-full`, and custom taxonomies. **Prefer USD currency** in Settings is off by default: the app uses the detected issuer currency, while enabling it selects SEC-provided USD units for each recognized metric when that same metric has USD data. No FX conversion is performed. Non-USD chart names show the selected currency, such as `Revenue (TWD)` or `Revenue (non-USD)`; USD titles remain unchanged. Only unavailable metrics are omitted.
+
+Debug distinguishes response-wide **Available currencies** from metric-level **Used currencies**. For example, ASML's response contains a few USD facts for derivatives, commitments, and option exercise prices, but its recognized revenue and statement metrics are EUR-only, so enabling USD preference does not change those EUR charts.
 
 GitHub Action **Update SEC data** grows the cache on a schedule (`MAX_FETCHES` per run).
