@@ -9,10 +9,11 @@
     "MSFT": "2026-07-13T23:26:38.786079+00:00",
     "MU": "2026-07-13T23:27:48.186552+00:00",
     "NVDA": "2026-07-13T23:26:39.350486+00:00",
-    "company_tickers.json": "2026-07-13T23:27:48.915363+00:00"
+    "TSM": "2026-07-14T00:56:34.842431+00:00",
+    "company_tickers.json": "2026-07-14T00:56:35.555948+00:00"
   },
-  "count": 9,
-  "generated": "2026-07-13T23:27:48.915829+00:00",
+  "count": 10,
+  "generated": "2026-07-14T00:56:35.556129+00:00",
   "names": {
     "AAPL": "Apple Inc.",
     "AVGO": "Broadcom Inc.",
@@ -22,7 +23,8 @@
     "META": "Meta Platforms, Inc.",
     "MSFT": "MICROSOFT CORP",
     "MU": "MICRON TECHNOLOGY INC",
-    "NVDA": "NVIDIA CORP"
+    "NVDA": "NVIDIA CORP",
+    "TSM": "TAIWAN SEMICONDUCTOR MANUFACTURING CO LTD"
   },
   "no_options": {}
 }

@@ -256,10 +256,13 @@ def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
             f"payload too small ({len(text)} B < MIN_FACTS_BYTES={MIN_FACTS_BYTES}); "
             "likely empty/non-operating entity"
         )
-    # Prefer files that actually have us-gaap (fundamentals usable)
+    # Prefer files that actually have fundamentals (us-gaap or ifrs-full usable)
+    # ADR / foreign issuers like TSM file 20-F using IFRS → facts contains ifrs-full, not us-gaap
     fobj = payload.get("facts") or {}
-    if not isinstance(fobj, dict) or "us-gaap" not in fobj:
-        raise ValueError("no us-gaap in companyfacts.facts")
+    if not isinstance(fobj, dict) or ("us-gaap" not in fobj and "ifrs-full" not in fobj):
+        # Provide helpful debug: what taxonomies are present?
+        present = list(fobj.keys())[:12] if isinstance(fobj, dict) else []
+        raise ValueError(f"no us-gaap in companyfacts.facts (present taxonomies: {present})")
     path.write_text(text, encoding="utf-8")
     return path
 

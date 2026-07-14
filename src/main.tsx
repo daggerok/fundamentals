@@ -235,10 +235,24 @@ const CON: Record<string, string[]> = {
     'SalesRevenueNet',
     'SalesRevenueGoodsNet',
     'RevenueFromContractWithCustomerIncludingAssessedTax',
+    // IFRS (TSM, ASML, etc — 20-F)
+    'Revenue',
+    'Sales',
   ],
-  costOfRevenue: ['CostOfGoodsAndServicesSold', 'CostOfRevenue', 'CostOfGoodsSold'],
+  costOfRevenue: [
+    'CostOfGoodsAndServicesSold',
+    'CostOfRevenue',
+    'CostOfGoodsSold',
+    'CostOfSales',
+  ],
   grossProfit: ['GrossProfit'],
-  operatingIncome: ['OperatingIncomeLoss'],
+  operatingIncome: [
+    'OperatingIncomeLoss',
+    // IFRS
+    'OperatingProfitLoss',
+    'ProfitLossFromOperatingActivities',
+    'OperatingIncome',
+  ],
   netIncome: [
     'NetIncomeLoss',
     'NetIncomeLossAvailableToCommonStockholdersBasic',
@@ -248,48 +262,74 @@ const CON: Record<string, string[]> = {
   ocf: [
     'NetCashProvidedByUsedInOperatingActivities',
     'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations',
+    // IFRS
+    'CashFlowsFromUsedInOperatingActivities',
+    'NetCashFlowsFromUsedInOperatingActivities',
+    'CashGeneratedFromOperatingActivities',
   ],
   capex: [
     'PaymentsToAcquirePropertyPlantAndEquipment',
     'PaymentsForCapitalImprovements',
+    // IFRS
+    'PurchaseOfPropertyPlantAndEquipment',
+    'PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities',
   ],
   depreciation: [
     'DepreciationDepletionAndAmortization',
     'Depreciation',
     'DepreciationAndAmortization',
     'DepreciationAmortizationAndAccretionNet',
+    // IFRS
+    'DepreciationAndAmortisationExpense',
+    'DepreciationExpense',
   ],
-  dividendsPaid: ['PaymentsOfDividends', 'PaymentsOfDividendsCommonStock'],
+  dividendsPaid: [
+    'PaymentsOfDividends',
+    'PaymentsOfDividendsCommonStock',
+    // IFRS
+    'DividendsPaid',
+    'DividendsPaidClassifiedAsFinancingActivities',
+  ],
   shareRepurchase: [
     'PaymentsForRepurchaseOfCommonStock',
     'PaymentsForRepurchaseOfEquity',
+    // IFRS
+    'PaymentsToAcquireOwnEquity',
   ],
   assets: ['Assets'],
-  currentAssets: ['AssetsCurrent'],
+  currentAssets: ['AssetsCurrent', 'CurrentAssets'],
   liabilities: ['Liabilities'],
-  currentLiabilities: ['LiabilitiesCurrent'],
+  currentLiabilities: ['LiabilitiesCurrent', 'CurrentLiabilities'],
   equity: [
     'StockholdersEquity',
     'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
+    // IFRS
+    'Equity',
+    'EquityAttributableToOwnersOfParent',
   ],
   cash: [
     'CashAndCashEquivalentsAtCarryingValue',
     'CashCashEquivalentsAndShortTermInvestments',
+    'CashAndCashEquivalents',
   ],
   shortTermDebt: ['ShortTermBorrowings', 'DebtCurrent'],
   longTermDebt: ['LongTermDebt', 'LongTermDebtNoncurrent'],
-  inventory: ['InventoryNet'],
-  receivables: ['AccountsReceivableNetCurrent', 'AccountsReceivableNet'],
-  payables: ['AccountsPayableCurrent'],
+  inventory: ['InventoryNet', 'Inventories'],
+  receivables: [
+    'AccountsReceivableNetCurrent',
+    'AccountsReceivableNet',
+    'TradeAndOtherCurrentReceivables',
+  ],
+  payables: ['AccountsPayableCurrent', 'TradeAndOtherCurrentPayables'],
   goodwill: ['Goodwill'],
-  intangibles: ['IntangibleAssetsNetExcludingGoodwill'],
-  ppe: ['PropertyPlantAndEquipmentNet'],
+  intangibles: ['IntangibleAssetsNetExcludingGoodwill', 'IntangibleAssetsOtherThanGoodwill'],
+  ppe: ['PropertyPlantAndEquipmentNet', 'PropertyPlantAndEquipment'],
   sharesOut: [
     'CommonStockSharesOutstanding',
     'WeightedAverageNumberOfShareOutstandingBasicAndDiluted',
     'WeightedAverageNumberOfDilutedSharesOutstanding',
   ],
-  rnd: ['ResearchAndDevelopmentExpense'],
+  rnd: ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'],
   sga: ['SellingGeneralAndAdministrativeExpense'],
 };
 
@@ -407,14 +447,29 @@ const TC: Record<
   },
 };
 
-function defaultDataSource(): DataSource {
+function isGitHubPagesHost(): boolean {
   try {
     const h = window.location.hostname;
-    if (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h.endsWith('.local')) {
-      return 'live';
-    }
-  } catch {}
-  return 'cache'; // GitHub Pages / hosted: prefer static /data/*.json
+    const p = window.location.pathname;
+    if (h.endsWith('github.io')) return true;
+    if (p.includes('/fundamentals')) return true;
+    // localhost / dev → live (proxy), everything else hosted → cache
+    if (
+      h === 'localhost' ||
+      h === '127.0.0.1' ||
+      h === '0.0.0.0' ||
+      h.endsWith('.local')
+    )
+      return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function defaultDataSource(): DataSource {
+  // GitHub Pages → cache (static /data/*.json), local dev → live (proxy)
+  return isGitHubPagesHost() ? 'cache' : 'live';
 }
 
 const DEFAULT_WWW_PROXY = 'http://localhost:8011/proxy';
@@ -488,8 +543,14 @@ async function probe(cands: string[], path: string): Promise<{ base: string; res
 
 function normalizeFacts(raw: any): any {
   if (!raw) return null;
-  if (raw['us-gaap']) return raw;
-  if (raw.facts) return raw.facts;
+  // raw may already be inner facts map { us-gaap, ifrs-full, ... }
+  if (raw['us-gaap'] || raw['ifrs-full']) return raw;
+  // raw may be full companyfacts payload { facts: { us-gaap, ifrs-full } }
+  if (raw.facts) {
+    if (raw.facts['us-gaap'] || raw.facts['ifrs-full']) return raw.facts;
+    // defensive: fact map may be already nested differently
+    return raw.facts;
+  }
   return raw;
 }
 
@@ -507,7 +568,7 @@ async function loadStaticFacts(sym: string): Promise<{
     if (ct.includes('text/html')) return null;
     const doc = await r.json();
     const facts = normalizeFacts(doc.facts || doc);
-    if (!facts?.['us-gaap']) return null;
+    if (!facts?.['us-gaap'] && !facts?.['ifrs-full']) return null;
     const ticker = String(doc.ticker || doc.symbol || sym).toUpperCase();
     const cik = String(doc.cik || '').padStart(10, '0');
     const title = doc.title || doc.entityName || ticker;
@@ -537,16 +598,24 @@ async function loadStaticManifest(): Promise<{
 }
 
 function exM(facts: any, keys: string[], mode: Mode) {
-  const g = facts?.['us-gaap'] || facts?.facts?.['us-gaap'];
-  if (!g) return [];
+  // Collect taxonomies: us-gaap primary, ifrs-full fallback for ADR 20-F (TSM, etc)
+  const taxonomies: any[] = [];
+  if (facts?.['us-gaap']) taxonomies.push(facts['us-gaap']);
+  if (facts?.['ifrs-full']) taxonomies.push(facts['ifrs-full']);
+  if (facts?.facts?.['us-gaap']) taxonomies.push(facts.facts['us-gaap']);
+  if (facts?.facts?.['ifrs-full']) taxonomies.push(facts.facts['ifrs-full']);
+  // Deduplicate by ref
+  const uniqueTax = Array.from(new Set(taxonomies));
+  if (uniqueTax.length === 0) return [];
   let r: any[] = [];
-  for (const k of keys) {
-    const s =
-      g[k]?.units?.USD ||
-      g[k]?.units?.['USD/shares'] ||
-      g[k]?.units?.shares ||
-      g[k]?.units?.pure;
-    if (s) {
+  for (const g of uniqueTax) {
+    for (const k of keys) {
+      const s =
+        g[k]?.units?.USD ||
+        g[k]?.units?.['USD/shares'] ||
+        g[k]?.units?.shares ||
+        g[k]?.units?.pure;
+      if (!s) continue;
       if (mode === 'Y') r = r.concat(s.filter((p: any) => p.form === '10-K' && p.fp === 'FY'));
       else
         r = r.concat(
@@ -1135,7 +1204,7 @@ function App() {
       if (wwwBase) log(`✅ www proxy: ${wwwBase}`);
       const raw = await res.json();
       const facts = normalizeFacts(raw);
-      if (!facts?.['us-gaap']) throw new Error('No us-gaap in companyfacts');
+      if (!facts?.['us-gaap'] && !facts?.['ifrs-full']) throw new Error('No us-gaap/ifrs-full in companyfacts');
       setFactsCache(facts);
       const comp = { title: co.title || raw?.entityName, cik, ticker: sym };
       setCompany(comp);
@@ -1390,6 +1459,20 @@ function App() {
                 onChange={(k) => setView(k as View)}
                 dark={dark}
                 title={t('tip.view', lang)}
+              />
+            </div>
+
+            {/* 6b. Data source CACHE/LIVE emoji log — sitting between tables/charts and themes */}
+            <div title={t('tip.source', lang)} className="flex-shrink-0">
+              <Pill
+                value={dataSource}
+                options={[
+                  { k: 'cache', l: '💾' },
+                  { k: 'live', l: '🌐' },
+                ]}
+                onChange={(k) => setDataSource(k as DataSource)}
+                dark={dark}
+                title={`${t('tip.source', lang)}: ${t(`source.${dataSource}.hint`, lang)}`}
               />
             </div>
 
