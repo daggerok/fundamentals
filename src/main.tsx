@@ -1456,17 +1456,7 @@ function App() {
                   aria-label={t('debug.title', lang)}
                   className={`absolute left-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className={`font-bold text-sm ${t1}`}>⌘ {t('debug.title', lang)}</div>
-                    <button
-                      type="button"
-                      className={`text-xs px-2 py-1 rounded ${dark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${mt}`}
-                      onClick={() => setShowDebug(false)}
-                      title={t('settings.close', lang)}
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  <div className={`font-bold text-sm ${t1}`}>⌘ {t('debug.title', lang)}</div>
 
                   <div className={`text-[10px] font-bold uppercase tracking-wide ${mt}`}>
                     {t('debug.overview', lang)}
@@ -1803,17 +1793,7 @@ function App() {
                 <div
                   className={`absolute right-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className={`font-bold text-sm ${t1}`}>⚙️ {t('settings.title', lang)}</div>
-                    <button
-                      type="button"
-                      className={`text-xs px-2 py-1 rounded ${dark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${mt}`}
-                      onClick={() => setShowSettings(false)}
-                      title={t('settings.close', lang)}
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  <div className={`font-bold text-sm ${t1}`}>⚙️ {t('settings.title', lang)}</div>
 
                   <div className={`text-[10px] font-bold uppercase tracking-wide ${mt}`}>
                     {t('settings.display', lang)}
@@ -2007,22 +1987,6 @@ function App() {
                     🗑️ {t('settings.clearCache', lang)}
                   </button>
 
-                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
-                    {t('settings.debug', lang)}
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-xs ${t2}`}>{t('settings.console', lang)}</span>
-                    <Pill
-                      value={showDebug ? 'on' : 'off'}
-                      options={[
-                        { k: 'off', l: t('off', lang) },
-                        { k: 'on', l: t('on', lang) },
-                      ]}
-                      onChange={(k) => setShowDebug(k === 'on')}
-                      dark={dark}
-                      title={t('console.toggle', lang)}
-                    />
-                  </div>
                 </div>
               )}
             </div>

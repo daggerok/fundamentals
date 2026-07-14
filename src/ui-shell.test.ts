@@ -49,6 +49,8 @@ describe('debug UI', () => {
     expect(main).not.toMatch(/showDebug\s*&&\s*debugRef\.current/);
     expect(main).not.toMatch(/showSettings\s*&&\s*settingsRef\.current/);
     expect(main).not.toContain('if (open) setShowSettings(false)');
+    expect(main.match(/setShowDebug\(/g)).toHaveLength(1);
+    expect(main.match(/setShowSettings\(/g)).toHaveLength(1);
   });
 });
 
