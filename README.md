@@ -210,11 +210,16 @@ bun run build   # ncp → dist/data/
 
 
 In the app **Settings → Data source**:
-- **CACHE** (default on GitHub Pages): load app-relative `data/{TICKER}.json` (for example, `/fundamentals/data/TSM.json`; no proxy)
-- **LIVE** (default on localhost): resolve ticker → CIK with `company_tickers.json`, then fetch SEC companyfacts via the data proxy
+- **CACHE** (default on GitHub Pages): load app-relative `./data/{TICKER}.json`. The browser resolves this to `/fundamentals/data/TSM.json` on this project's Pages deployment and `/data/TSM.json` on localhost.
+- **LIVE** (default on localhost): resolve ticker → CIK with `company_tickers.json`, then fetch SEC companyfacts via the data proxy.
 
 SEC companyfacts payloads are keyed by CIK and do **not** guarantee a `symbol` field. The app keeps the searched ticker from `company_tickers.json`; the pre-fetch script adds `symbol` and `ticker` only to the local cache wrapper.
 
-Annual IFRS facts from foreign issuers' `20-F` filings (for example TSM) are supported when the SEC provides USD units. Metrics that are absent or available only in local currency are left hidden rather than mislabeled as USD. `6-K` facts are not treated as discrete quarters because they may represent YTD or half-year periods.
+The report selector supports:
+- **Y** — annual `10-K`, `20-F`, and `40-F` reports.
+- **Q** — quarterly `10-Q` reports, plus annual FY reference points.
+- **I** — foreign interim `6-K` reports, labeled from their actual period (`H1`, `9M`, or date range) rather than pretending they are discrete quarters.
+
+Metric extraction searches every returned taxonomy, including `us-gaap`, `ifrs-full`, and custom taxonomies. USD is preferred when available; otherwise local-currency data is retained and chart names show the currency, such as `Revenue (TWD)` or `Revenue (non-USD)`. Only unavailable metrics are omitted. The debug status shows the taxonomies, forms, and currencies actually used, plus all report forms available for the ticker.
 
 GitHub Action **Update SEC data** grows the cache on a schedule (`MAX_FETCHES` per run).

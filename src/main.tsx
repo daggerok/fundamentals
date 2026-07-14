@@ -10,12 +10,19 @@ import React, {
   Fragment,
 } from 'react';
 import { createRoot } from 'react-dom/client';
-import { extractMetric, normalizeFacts, staticDataUrl } from './data-utils';
+import {
+  extractMetric,
+  hasUsableFacts,
+  inspectReporting,
+  normalizeFacts,
+  staticDataUrl,
+  type ReportingInfo,
+} from './data-utils';
 
 type Language = 'en' | 'ru';
-type Mode = 'Y' | 'Q';
+type Mode = 'Y' | 'Q' | 'I';
 type View = 'T' | 'C';
-/** CACHE = same-origin data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
+/** CACHE = same-origin ./data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
 type DataSource = 'cache' | 'live';
 
 const LS_P = 'sec-dash-prefs';
@@ -44,7 +51,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.lang': 'Language',
     'tip.settings': 'Settings',
     'tip.view': 'Charts / table',
-    'tip.mode': 'Annual / quarterly',
+    'tip.mode': 'Annual / quarterly / interim reports',
     'tip.search': 'Search ticker',
     'tip.load': 'Load company data',
     'tip.proxy': 'Proxy status (www / data)',
@@ -60,7 +67,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.source': 'Data source',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin data/{TICKER}.json (pre-fetched for GitHub Pages)',
+    'source.cache.hint': 'Same-origin ./data/{TICKER}.json (pre-fetched for GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR via local proxy',
     'tip.source': 'CACHE (static) / LIVE (proxy)',
     'settings.scale': 'Text scale',
@@ -79,6 +86,7 @@ const translations: Record<Language, Record<string, string>> = {
     'view.table': 'Table',
     'mode.annual': 'Annual',
     'mode.quarterly': 'Quarterly',
+    'mode.interim': 'Interim (6-K)',
     'theme.dark': 'Dark',
     'theme.light': 'Light',
     'on': 'On',
@@ -140,7 +148,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.lang': 'Язык',
     'tip.settings': 'Настройки',
     'tip.view': 'Графики / таблица',
-    'tip.mode': 'Годовой / квартальный',
+    'tip.mode': 'Годовой / квартальный / промежуточный отчёт',
     'tip.search': 'Поиск тикера',
     'tip.load': 'Загрузить данные компании',
     'tip.proxy': 'Статус прокси (www / data)',
@@ -156,7 +164,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.source': 'Источник данных',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin data/{TICKER}.json (префетч для GitHub Pages)',
+    'source.cache.hint': 'Same-origin ./data/{TICKER}.json (префетч для GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR через локальный прокси',
     'tip.source': 'CACHE (статика) / LIVE (прокси)',
     'settings.scale': 'Масштаб текста',
@@ -175,6 +183,7 @@ const translations: Record<Language, Record<string, string>> = {
     'view.table': 'Таблица',
     'mode.annual': 'Годовой',
     'mode.quarterly': 'Квартальный',
+    'mode.interim': 'Промежуточный (6-K)',
     'theme.dark': 'Тёмная',
     'theme.light': 'Светлая',
     'on': 'Вкл',
@@ -570,7 +579,7 @@ async function loadStaticFacts(sym: string): Promise<{
     if (ct.includes('text/html')) return null;
     const doc = await r.json();
     const facts = normalizeFacts(doc.facts || doc);
-    if (!facts?.['us-gaap'] && !facts?.['ifrs-full']) return null;
+    if (!hasUsableFacts(facts)) return null;
     const ticker = String(doc.ticker || doc.symbol || sym).toUpperCase();
     const cik = String(doc.cik || '').padStart(10, '0');
     const title = doc.title || doc.entityName || ticker;
@@ -603,17 +612,39 @@ async function loadStaticManifest(): Promise<{
 
 const exM = extractMetric;
 
-const fV = (v: any, u: string) => {
+type MetricSource = { secUnit: string | null; currency: string | null };
+
+const fV = (v: any, u: string, source?: MetricSource) => {
   if (v == null) return '—';
   if (u === '$M')
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(v / 1e6);
-  if (u === '$') return '$' + Number(v).toFixed(2);
+  if (u === '$') {
+    const value = Number(v).toFixed(2);
+    return source?.currency === 'USD' ? '$' + value : value;
+  }
   if (u === '%') return v.toFixed(1) + '%';
   if (u === 'x') return v.toFixed(2) + 'x';
   if (u === '#M')
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(v / 1e6);
   return String(v);
 };
+
+function displayUnit(unit: string, source?: MetricSource): string {
+  if (unit === '$M' && source?.currency && source.currency !== 'USD') {
+    return `${source.currency} M`;
+  }
+  if (unit === '$' && source?.currency && source.currency !== 'USD') {
+    return source.currency === 'non-USD' ? 'non-USD/share' : `${source.currency}/share`;
+  }
+  return unit;
+}
+
+function metricTitle(label: string, unit: string, source?: MetricSource): string {
+  if ((unit === '$M' || unit === '$') && source?.currency && source.currency !== 'USD') {
+    return `${label} (${source.currency})`;
+  }
+  return label;
+}
 const fA = (v: any, u: string) => {
   if (v == null) return '—';
   if (u === '$M' || u === '#M') return (v / 1e6).toFixed(0);
@@ -627,91 +658,173 @@ const sliderToScale = (v: number) => 0.7 + (v / 100) * 0.8;
 const DEFAULT_SCALE_SLIDER = 50;
 
 function proc(facts: any, mode: Mode) {
-  const ex: any = {};
-  for (const [k, c] of Object.entries(CON)) ex[k] = exM(facts, c, mode);
+  const ex: Record<string, any[]> = {};
+  for (const [key, concepts] of Object.entries(CON)) ex[key] = exM(facts, concepts, mode);
   const allE = Object.values(ex).flat() as any[];
-  const pK = [...new Set(allE.map((d) => d._periodKey).filter(Boolean))];
-  pK.sort((a, b) => {
-    const [ay, af = 'FY'] = String(a).split('-'),
-      [by, bf = 'FY'] = String(b).split('-');
-    if (ay !== by) return Number(ay) - Number(by);
-    const order: Record<string, number> = { Q1: 1, Q2: 2, Q3: 3, FY: 4, Q4: 4 };
-    return (order[af] || 0) - (order[bf] || 0);
-  });
-  const gv = (k: string, pk: any) => {
-    const a = ex[k] || [];
-    return a.find((d: any) => d._periodKey === pk)?.val;
+  const source: Record<string, MetricSource> = {};
+  for (const [key, rows] of Object.entries(ex)) {
+    const first = rows[0];
+    source[key] = {
+      secUnit: first?._secUnit || null,
+      currency: first?._currency || null,
+    };
+  }
+
+  const pK = [...new Set(allE.map((row) => row._periodKey).filter(Boolean))];
+  if (mode === 'I') {
+    pK.sort((a, b) => String(a).localeCompare(String(b)));
+  } else {
+    pK.sort((a, b) => {
+      const [ay, af = 'FY'] = String(a).split('-'),
+        [by, bf = 'FY'] = String(b).split('-');
+      if (ay !== by) return Number(ay) - Number(by);
+      const order: Record<string, number> = { Q1: 1, Q2: 2, Q3: 3, FY: 4, Q4: 4 };
+      return (order[af] || 0) - (order[bf] || 0);
+    });
+  }
+
+  const periodLabels = new Map<string, string>();
+  for (const row of allE) {
+    if (row._periodKey && row._periodLabel && !periodLabels.has(row._periodKey)) {
+      periodLabels.set(row._periodKey, row._periodLabel);
+    }
+  }
+  const gv = (key: string, periodKey: any) =>
+    ex[key]?.find((row: any) => row._periodKey === periodKey)?.val;
+  const gl = (periodKey: any) => periodLabels.get(String(periodKey)) || String(periodKey);
+  const currency = (key: string) => source[key]?.currency || null;
+  const compatible = (...keys: string[]) => {
+    const currencies = keys.map(currency).filter(Boolean);
+    return new Set(currencies).size <= 1;
   };
-  const gl = (pk: any) => {
-    if (mode === 'Y') return String(pk);
-    const [fy, fp] = String(pk).split('-');
-    return fp === 'FY' ? fy : `${fy} ${fp}`;
-  };
+
   const ms: any = {};
-  const ak = new Set<string>();
-  SEC.forEach((s) => s.metrics.forEach((mt) => ak.add(mt.key)));
-  for (const k of ak) ms[k] = pK.map((pk) => ({ label: gl(pk), value: gv(k, pk), periodKey: pk }));
-  const cs = (k: string) =>
-    pK.map((pk) => {
-      const rev = gv('revenue', pk),
-        gp = gv('grossProfit', pk),
-        ni = gv('netIncome', pk),
-        oi = gv('operatingIncome', pk),
-        ocf = gv('ocf', pk),
-        cx = gv('capex', pk),
-        eq = gv('equity', pk),
-        ast = gv('assets', pk),
-        ltd = gv('longTermDebt', pk),
-        std = gv('shortTermDebt', pk),
-        ca = gv('currentAssets', pk),
-        cl = gv('currentLiabilities', pk),
-        sh = gv('sharesOut', pk);
-      let v: any;
-      switch (k) {
+  const metricKeys = new Set<string>();
+  SEC.forEach((section) => section.metrics.forEach((metric) => metricKeys.add(metric.key)));
+  for (const key of metricKeys) {
+    ms[key] = pK.map((periodKey) => ({
+      label: gl(periodKey),
+      value: gv(key, periodKey),
+      periodKey,
+    }));
+  }
+
+  const computedSource: Record<string, MetricSource> = {};
+  const computedCurrency = (key: string): string | null => {
+    switch (key) {
+      case 'fcf':
+      case 'fcfPerShare':
+        return compatible('ocf', 'capex') ? currency('ocf') || currency('capex') : null;
+      case 'revenuePerShare':
+        return currency('revenue');
+      default:
+        return null;
+    }
+  };
+
+  const cs = (key: string) => {
+    computedSource[key] = {
+      secUnit: null,
+      currency: computedCurrency(key),
+    };
+    return pK.map((periodKey) => {
+      const rev = gv('revenue', periodKey),
+        gp = gv('grossProfit', periodKey),
+        ni = gv('netIncome', periodKey),
+        oi = gv('operatingIncome', periodKey),
+        ocf = gv('ocf', periodKey),
+        cx = gv('capex', periodKey),
+        eq = gv('equity', periodKey),
+        ast = gv('assets', periodKey),
+        ltd = gv('longTermDebt', periodKey),
+        std = gv('shortTermDebt', periodKey),
+        ca = gv('currentAssets', periodKey),
+        cl = gv('currentLiabilities', periodKey),
+        sh = gv('sharesOut', periodKey);
+      let value: any;
+      switch (key) {
         case 'grossMargin':
-          v = gp != null && rev != null && rev ? (gp / rev) * 100 : null;
+          value = compatible('grossProfit', 'revenue') && gp != null && rev ? (gp / rev) * 100 : null;
           break;
         case 'netMargin':
-          v = ni != null && rev != null && rev ? (ni / rev) * 100 : null;
+          value = compatible('netIncome', 'revenue') && ni != null && rev ? (ni / rev) * 100 : null;
           break;
         case 'opMargin':
-          v = oi != null && rev != null && rev ? (oi / rev) * 100 : null;
+          value = compatible('operatingIncome', 'revenue') && oi != null && rev ? (oi / rev) * 100 : null;
           break;
         case 'fcf':
-          v = ocf != null && cx != null ? ocf - cx : null;
+          value = compatible('ocf', 'capex') && ocf != null && cx != null ? ocf - cx : null;
           break;
         case 'roe':
-          v = ni != null && eq != null && eq ? (ni / eq) * 100 : null;
+          value = compatible('netIncome', 'equity') && ni != null && eq ? (ni / eq) * 100 : null;
           break;
         case 'roa':
-          v = ni != null && ast != null && ast ? (ni / ast) * 100 : null;
+          value = compatible('netIncome', 'assets') && ni != null && ast ? (ni / ast) * 100 : null;
           break;
         case 'debtToEquity': {
-          const d = (ltd || 0) + (std || 0);
-          v = d && eq ? d / eq : null;
+          const currenciesMatch = compatible('longTermDebt', 'shortTermDebt', 'equity');
+          const debt = (ltd || 0) + (std || 0);
+          value = currenciesMatch && debt && eq ? debt / eq : null;
           break;
         }
         case 'currentRatio':
-          v = ca != null && cl != null && cl ? ca / cl : null;
+          value = compatible('currentAssets', 'currentLiabilities') && ca != null && cl ? ca / cl : null;
           break;
         case 'revenuePerShare':
-          v = rev != null && sh ? rev / sh : null;
+          value = rev != null && sh ? rev / sh : null;
           break;
         case 'fcfPerShare': {
-          const f = ocf != null && cx != null ? ocf - cx : null;
-          v = f != null && sh ? f / sh : null;
+          const fcf = compatible('ocf', 'capex') && ocf != null && cx != null ? ocf - cx : null;
+          value = fcf != null && sh ? fcf / sh : null;
           break;
         }
         default:
-          v = null;
+          value = null;
       }
-      return { label: gl(pk), value: v, periodKey: pk };
+      return { label: gl(periodKey), value, periodKey };
     });
+  };
+
   const cS: any = {};
-  SEC.forEach((s) => (s.computed || []).forEach((c) => {
-    cS[c.key] = cs(c.key);
-  }));
-  return { metricSeries: ms, computedSeries: cS, periodKeys: pK, getLabel: gl };
+  SEC.forEach((section) =>
+    (section.computed || []).forEach((computed) => {
+      cS[computed.key] = cs(computed.key);
+    }),
+  );
+  return {
+    metricSeries: ms,
+    computedSeries: cS,
+    metricSource: source,
+    computedSource,
+    reporting: inspectReporting(facts, allE),
+    periodKeys: pK,
+    getLabel: gl,
+  };
+}
+
+function reportingDebugText(info: ReportingInfo): string {
+  const standards: string[] = [];
+  if (info.usedTaxonomies.includes('us-gaap')) standards.push('US-GAAP (us-gaap)');
+  if (info.usedTaxonomies.includes('ifrs-full')) standards.push('IFRS (ifrs-full)');
+  const otherUsed = info.usedTaxonomies.filter(
+    (taxonomy) => taxonomy !== 'us-gaap' && taxonomy !== 'ifrs-full',
+  );
+  if (otherUsed.length) standards.push(`other (${otherUsed.join(', ')})`);
+
+  const parts = [
+    standards.length ? `used ${standards.join(' + ')}` : 'no recognized metrics used',
+    `reports ${info.usedForms.join(', ') || '—'}`,
+    `currencies ${info.usedCurrencies.join(', ') || '—'}`,
+    `available reports ${info.availableForms.join(', ') || '—'}`,
+  ];
+  if (
+    info.usedTaxonomies.includes('ifrs-full') &&
+    !info.availableTaxonomies.includes('us-gaap') &&
+    info.usedForms.includes('20-F')
+  ) {
+    parts.push('not US-GAAP/10-K');
+  }
+  return parts.join(' · ');
 }
 
 const MiniChart = ({
@@ -719,6 +832,7 @@ const MiniChart = ({
   color,
   unit,
   label,
+  source,
   dark,
   scale,
 }: {
@@ -726,6 +840,7 @@ const MiniChart = ({
   color: { line: string; fill: string };
   unit: string;
   label: string;
+  source?: MetricSource;
   dark: boolean;
   scale: number;
 }) => {
@@ -741,7 +856,32 @@ const MiniChart = ({
     setCW(cRef.current.clientWidth);
     return () => ro.disconnect();
   }, []);
-  if (valid.length < 2) return null;
+  if (valid.length === 0) return null;
+  if (valid.length === 1) {
+    const point = valid[0];
+    return (
+      <div
+        ref={cRef}
+        className={`rounded-lg p-4 border text-center ${dark ? 'bg-slate-900/50 border-slate-700/30' : 'bg-white/60 border-slate-200'}`}
+      >
+        <div
+          className={`font-medium ${dark ? 'text-slate-400' : 'text-slate-600'}`}
+          style={{ fontSize: Math.round(12 * scale) }}
+        >
+          {label}
+        </div>
+        <div className="mt-3 font-mono font-bold" style={{ color: color.line, fontSize: Math.round(20 * scale) }}>
+          {fV(point.value, unit, source)}
+          <span className={`ml-1 text-xs font-normal ${dark ? 'text-slate-500' : 'text-slate-500'}`}>
+            {displayUnit(unit, source)}
+          </span>
+        </div>
+        <div className={`mt-1 text-xs ${dark ? 'text-slate-500' : 'text-slate-500'}`}>
+          {point.label}
+        </div>
+      </div>
+    );
+  }
   const ANG = 35,
     RAD = (ANG * Math.PI) / 180;
   const fs = Math.round(7 * scale),
@@ -907,6 +1047,7 @@ function App() {
   const [dark, setDark] = useState(prefs.dark !== false);
   const [factsCache, setFactsCache] = useState<any>(cached?.facts || null);
   const [pd, setPd] = useState<any>(null);
+  const [reporting, setReporting] = useState<ReportingInfo | null>(null);
   const [sug, setSug] = useState<any[]>([]);
   const [showSug, setShowSug] = useState(false);
   const [selIdx, setSelIdx] = useState(-1);
@@ -930,7 +1071,9 @@ function App() {
       setCompany(comp);
       setFactsCache(facts);
       setTicker(comp.ticker || prefs.ticker || 'AAPL');
-      setPd(proc(facts, mode));
+      const processed = proc(facts, mode);
+      setPd(processed);
+      setReporting(processed.reporting);
       setDataOk(true);
       log(`✅ Restored ${comp.ticker} (cache)`);
     }
@@ -976,7 +1119,10 @@ function App() {
   }, [dark]);
 
   useEffect(() => {
-    if (factsCache) setPd(proc(normalizeFacts(factsCache), mode));
+    if (!factsCache) return;
+    const processed = proc(normalizeFacts(factsCache), mode);
+    setPd(processed);
+    setReporting(processed.reporting);
   }, [mode, factsCache]);
 
   // After tickers load, enable load button focus if input already has a symbol
@@ -1082,6 +1228,7 @@ function App() {
     if (!opts?.keepPrevious) {
       setCompany(null);
       setPd(null);
+      setReporting(null);
       setFactsCache(null);
     }
     if (!sym) return;
@@ -1104,7 +1251,7 @@ function App() {
         };
       }
       if (!co) {
-        // CACHE may still have data/{TICKER}.json even if ticker map is stubby
+        // CACHE may still have ./data/{TICKER}.json even if ticker map is stubby
         if (dataSource === 'cache') {
           const cachedFile = await loadStaticFacts(sym);
           if (cachedFile) {
@@ -1112,10 +1259,12 @@ function App() {
             setWwwOk(true);
             setFactsCache(cachedFile.facts);
             setCompany(cachedFile.company);
-            setPd(proc(cachedFile.facts, mode));
+            const processed = proc(cachedFile.facts, mode);
+            setPd(processed);
+            setReporting(processed.reporting);
             sc({ facts: cachedFile.facts, company: cachedFile.company });
             log(`${sym} → CIK ${cachedFile.company.cik}`);
-            log(`✅ CACHE data/${sym}.json`);
+            log(`✅ CACHE ./data/${sym}.json`);
             log('✅ Done');
             return;
           }
@@ -1125,7 +1274,7 @@ function App() {
       const cik = String(co.cik_str ?? co.cik).padStart(10, '0');
       log(`${sym} → CIK ${cik}`);
 
-      // --- CACHE mode: same-origin data/{TICKER}.json (options-desk pattern) ---
+      // --- CACHE mode: same-origin ./data/{TICKER}.json (options-desk pattern) ---
       if (dataSource === 'cache') {
         const cachedFile = await loadStaticFacts(sym);
         if (cachedFile) {
@@ -1133,14 +1282,16 @@ function App() {
           setWwwOk(true);
           setFactsCache(cachedFile.facts);
           setCompany(cachedFile.company);
-          setPd(proc(cachedFile.facts, mode));
+          const processed = proc(cachedFile.facts, mode);
+          setPd(processed);
+          setReporting(processed.reporting);
           sc({ facts: cachedFile.facts, company: cachedFile.company });
-          log(`✅ CACHE data/${sym}.json`);
+          log(`✅ CACHE ./data/${sym}.json`);
           log('✅ Done');
           return;
         }
         // fall through to LIVE if static miss (and log)
-        log(`CACHE miss data/${sym}.json — trying LIVE proxy`);
+        log(`CACHE miss ./data/${sym}.json — trying LIVE proxy`);
       }
 
       // --- LIVE mode: SEC via proxy ---
@@ -1161,11 +1312,13 @@ function App() {
       if (wwwBase) log(`✅ www proxy: ${wwwBase}`);
       const raw = await res.json();
       const facts = normalizeFacts(raw);
-      if (!facts?.['us-gaap'] && !facts?.['ifrs-full']) throw new Error('No us-gaap/ifrs-full in companyfacts');
+      if (!hasUsableFacts(facts)) throw new Error('No usable fact taxonomies in companyfacts');
       setFactsCache(facts);
       const comp = { title: co.title || raw?.entityName, cik, ticker: sym };
       setCompany(comp);
-      setPd(proc(facts, mode));
+      const processed = proc(facts, mode);
+      setPd(processed);
+      setReporting(processed.reporting);
       sc({ facts, company: comp });
       log('✅ Done');
     } catch (e: any) {
@@ -1391,13 +1544,14 @@ function App() {
               )}
             </button>
 
-            {/* 5. Y / Q */}
+            {/* 5. Y / Q / I (annual / quarterly / foreign interim 6-K) */}
             <div title={t('tip.mode', lang)} className="flex-shrink-0">
               <Pill
                 value={mode}
                 options={[
                   { k: 'Y', l: 'Y' },
                   { k: 'Q', l: 'Q' },
+                  { k: 'I', l: 'I' },
                 ]}
                 onChange={(k) => setMode(k as Mode)}
                 dark={dark}
@@ -1545,6 +1699,7 @@ function App() {
                       options={[
                         { k: 'Y', l: 'Y' },
                         { k: 'Q', l: 'Q' },
+                        { k: 'I', l: 'I' },
                       ]}
                       onChange={(k) => setMode(k as Mode)}
                       dark={dark}
@@ -1692,6 +1847,7 @@ function App() {
                       cc();
                       setCompany(null);
                       setPd(null);
+                      setReporting(null);
                       setFactsCache(null);
                       setDataOk(false);
                       log('cache cleared');
@@ -1761,6 +1917,17 @@ function App() {
                         {dataSource === 'cache' ? 'CACHE' : 'LIVE'}
                       </span>,
                     );
+                    if (reporting) {
+                      push(
+                        <span
+                          key="reporting"
+                          className={dark ? 'text-amber-300' : 'text-amber-700'}
+                          title={`Available taxonomies: ${reporting.availableTaxonomies.join(', ') || '—'}; available currencies: ${reporting.availableCurrencies.join(', ') || '—'}`}
+                        >
+                          📄 {reportingDebugText(reporting)}
+                        </span>,
+                      );
+                    }
                     if (dataSource === 'live') {
                       const dataUrl = dataBase || dataProxyUrl || DEFAULT_DATA_PROXY;
                       const wwwUrl = wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY;
@@ -1777,7 +1944,7 @@ function App() {
                     } else {
                       push(
                         <span key="cache" className={dataOk ? 'text-emerald-500' : mt}>
-                          {dataOk ? '✅' : '…'} data/{'{TICKER}'}.json
+                          {dataOk ? '✅' : '…'} ./data/{'{TICKER}'}.json
                         </span>,
                       );
                     }
@@ -1877,12 +2044,17 @@ bun run serve:app`}</pre>
         {company && !loading && pd && (
           <div className="space-y-6 animate-fade-in">
             {SEC.map((section) => {
-              const { metricSeries, computedSeries } = pd;
+              const { metricSeries, computedSeries, metricSource, computedSource } = pd;
               const allM = [
-                ...section.metrics.map((m) => ({ ...m, series: metricSeries[m.key] })),
+                ...section.metrics.map((m) => ({
+                  ...m,
+                  series: metricSeries[m.key],
+                  source: metricSource[m.key],
+                })),
                 ...(section.computed || []).map((c) => ({
                   ...c,
                   series: computedSeries[c.key],
+                  source: computedSource[c.key],
                 })),
               ].filter((m) => hd(m.series));
               if (!allM.length) return null;
@@ -1927,7 +2099,8 @@ bun run serve:app`}</pre>
                           data={m.series}
                           color={clr}
                           unit={m.unit}
-                          label={metricLabel(m.key, m.label, lang)}
+                          label={metricTitle(metricLabel(m.key, m.label, lang), m.unit, m.source)}
+                          source={m.source}
                           dark={dark}
                           scale={scale}
                         />
@@ -1970,7 +2143,7 @@ bun run serve:app`}</pre>
                               style={{ paddingTop: tblCellPy, paddingBottom: tblCellPy }}
                             >
                               {metricLabel(m.key, m.label, lang)}{' '}
-                              <span className={`text-xs ${mt}`}>({m.unit})</span>
+                              <span className={`text-xs ${mt}`}>({displayUnit(m.unit, m.source)})</span>
                             </td>
                             {m.series.map((d: any, j: number) => (
                               <td
@@ -1980,7 +2153,7 @@ bun run serve:app`}</pre>
                                 }`}
                                 style={{ paddingTop: tblCellPy, paddingBottom: tblCellPy }}
                               >
-                                {fV(d.value, m.unit)}
+                                {fV(d.value, m.unit, m.source)}
                               </td>
                             ))}
                           </tr>
