@@ -18,16 +18,17 @@ SEC EDGAR Financial Fundamentals Dashboard — React + TypeScript + Tailwind CSS
 
 ## Быстрый старт / Quick start
 
-Точно как в [fundamentals-runtime](https://github.com/daggerok/fundamentals-runtime) — dual `local-cors-proxy` + app:
+Runtime-compatible dual SEC proxy + app:
 
 ```bash
 git clone https://github.com/daggerok/fundamentals.git
 cd fundamentals
-bun install -E
 
-bun stop ; bun kill ; bun ps ; bun start ; bun logs
+# оба SEC-прокси / both SEC proxies
+bun install -E && bun serve:proxy
 ```
 
+Для локального UI запустите `bun serve:app` в другом терминале.
 Откройте: **http://localhost:1234** (Parcel)  
 Прокси (как в runtime):
 
@@ -36,32 +37,19 @@ bun stop ; bun kill ; bun ps ; bun start ; bun logs
 | **8011** | `www.sec.gov` | `http://localhost:8011/proxy/files/company_tickers.json` |
 | **8012** | `data.sec.gov` | `http://localhost:8012/proxy/api/xbrl/companyfacts/CIK0000320193.json` |
 
-`bun start` поднимает **оба** `local-cors-proxy` + Parcel (`npm run serve` = `serve:proxy-www` + `serve:proxy-data` + `serve:app`).
+`bun serve:proxy` поднимает **оба** Bun SEC-прокси с корректным `User-Agent`; `bun serve:app` отдельно запускает Parcel.
 
 ---
 
 ## Прокси (обязательно для live SEC data)
 
-### Вариант A — dual local-cors-proxy (как fundamentals-runtime) ✅ default
+### Вариант A — dual Bun SEC proxy (runtime-compatible) ✅ default
 
 ```bash
-# Терминал 1
-bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011
-
-# Терминал 2
-bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012
-
-# Терминал 3
-bun run serve:app
+bun install -E && bun serve:proxy
 ```
 
-или одной командой:
-
-```bash
-bun run serve          # parallel: proxy-www + proxy-data + app
-# / pm2:
-bun start
-```
+Команда запускает оба прокси с обязательным SEC `User-Agent`: `www.sec.gov` на `8011` и `data.sec.gov` на `8012`. Для локального UI отдельно выполните `bun serve:app`.
 
 Приложение само **пробивает** кандидатов `http://localhost:{8011,8010,8080,3000,8012}/proxy` (логика как в runtime).
 
@@ -106,8 +94,8 @@ bun run build-github-pages   # public-url=/fundamentals/
 
 ```bash
 bun install -E
-bun run serve              # dual local-cors-proxy + Parcel (runtime-style)
-bun run serve:app          # только Parcel
+bun serve:proxy            # оба Bun SEC-прокси (8011 + 8012)
+bun serve:app              # только Parcel
 bun ./scripts/sec-proxy.ts # unified Bun proxy
 bun run all                # sec-proxy.ts + Parcel
 bun start / bun ps / bun logs / bun restart / bun stop / bun kill
