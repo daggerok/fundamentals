@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import {
+  detectPrimaryCurrency,
   extractMetric,
   hasUsableFacts,
   inspectReporting,
@@ -112,19 +113,63 @@ describe('metric extraction', () => {
     const doc = JSON.parse(readFileSync(new URL('../data/TSM.json', import.meta.url), 'utf8'));
     const facts = normalizeFacts(doc);
 
-    const revenue = extractMetric(facts, ['Revenue'], 'Y');
+    const primaryCurrency = detectPrimaryCurrency(facts, 'Y');
+    const revenue = extractMetric(facts, ['Revenue'], 'Y', {
+      preferUsd: true,
+      preferredCurrency: primaryCurrency,
+    });
+    const localRevenue = extractMetric(facts, ['Revenue'], 'Y', {
+      preferUsd: false,
+      preferredCurrency: primaryCurrency,
+    });
     const assets = extractMetric(facts, ['Assets'], 'Y');
     const netIncome = extractMetric(facts, ['ProfitLoss'], 'Y');
     const eps = extractMetric(facts, ['BasicEarningsLossPerShare'], 'Y');
     const interimRevenue = extractMetric(facts, ['Revenue'], 'I');
 
+    expect(primaryCurrency).toBe('TWD');
     expect(revenue.length).toBeGreaterThanOrEqual(5);
+    expect(localRevenue.length).toBeGreaterThanOrEqual(5);
+    expect(revenue[0]._currency).toBe('USD');
+    expect(localRevenue[0]._currency).toBe('TWD');
     expect(assets.length).toBeGreaterThanOrEqual(5);
     expect(netIncome.length).toBeGreaterThanOrEqual(5);
     expect(eps.length).toBeGreaterThanOrEqual(5);
     expect(interimRevenue.length).toBeGreaterThanOrEqual(1);
     expect(interimRevenue.every((row) => row.form === '6-K')).toBe(true);
     expect(revenue.find((row) => row._periodKey === '2024')?.val).toBe(88_268_000_000);
+    expect(localRevenue.find((row) => row._periodKey === '2024')?.val).toBe(
+      2_894_307_700_000,
+    );
+  });
+
+  test('detects USD as the primary currency for a US issuer', () => {
+    const doc = JSON.parse(readFileSync(new URL('../data/AAPL.json', import.meta.url), 'utf8'));
+    expect(detectPrimaryCurrency(normalizeFacts(doc), 'Y')).toBe('USD');
+  });
+
+  test('keeps ASML revenue in EUR because response-wide USD belongs to other facts', () => {
+    const doc = JSON.parse(readFileSync(new URL('../data/ASML.json', import.meta.url), 'utf8'));
+    const facts = normalizeFacts(doc);
+    const primaryCurrency = detectPrimaryCurrency(facts, 'Y');
+    const revenue = extractMetric(
+      facts,
+      [
+        'RevenueFromContractWithCustomerExcludingAssessedTax',
+        'SalesRevenueNet',
+        'SalesRevenueGoodsNet',
+      ],
+      'Y',
+      { preferUsd: true, preferredCurrency: primaryCurrency },
+    );
+    const reporting = inspectReporting(facts, revenue);
+
+    expect(primaryCurrency).toBe('EUR');
+    expect(reporting.availableCurrencies).toContain('USD');
+    expect(reporting.availableCurrencies).not.toContain('non-USD');
+    expect(revenue.length).toBeGreaterThan(0);
+    expect(revenue.every((row) => row._currency === 'EUR')).toBe(true);
+    expect(reporting.usedCurrencies).toEqual(['EUR']);
   });
 
   test('keeps local currency when USD is unavailable', () => {
@@ -187,10 +232,17 @@ describe('metric extraction', () => {
     };
     expect(hasUsableFacts(facts)).toBe(true);
     const rows = extractMetric(facts, ['LocalRevenue', 'Revenue'], 'Y');
+    const localRows = extractMetric(facts, ['LocalRevenue', 'Revenue'], 'Y', {
+      preferUsd: false,
+      preferredCurrency: 'TWD',
+    });
     expect(rows).toHaveLength(1);
     expect(rows[0].val).toBe(100);
     expect(rows[0]._currency).toBe('USD');
     expect(rows[0]._taxonomy).toBe('custom-company');
+    expect(localRows).toHaveLength(1);
+    expect(localRows[0].val).toBe(3_000);
+    expect(localRows[0]._currency).toBe('TWD');
   });
 
   test('keeps 6-K facts in a separate interim mode', () => {

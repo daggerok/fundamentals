@@ -54,6 +54,18 @@ describe('debug UI', () => {
   });
 });
 
+describe('currency preference UI', () => {
+  test('defaults to issuer currency and offers a persistent Prefer USD checkbox', () => {
+    expect(main).toContain('prefs.preferUsd === true');
+    expect(main).toContain("t('settings.preferUsd', lang)");
+    expect(main).toContain('type="checkbox"');
+    expect(main).toContain('checked={preferUsd}');
+    expect(main).toContain('setPreferUsd(event.target.checked)');
+    expect(main).toContain("pd?.primaryCurrency !== 'USD'");
+    expect(main).toContain("source.currency !== 'USD'");
+  });
+});
+
 describe('SEC cache schedule', () => {
   test('uses the requested daily stagger and half-second request delay', () => {
     const crons = [
