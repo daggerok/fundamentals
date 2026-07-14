@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { extractMetric, normalizeFacts, staticDataUrl } from './data-utils';
+import {
+  extractMetric,
+  hasUsableFacts,
+  inspectReporting,
+  normalizeFacts,
+  staticDataUrl,
+} from './data-utils';
 
 describe('companyfacts normalization', () => {
   test('uses facts from a raw SEC response without requiring a symbol field', () => {
@@ -110,15 +116,18 @@ describe('metric extraction', () => {
     const assets = extractMetric(facts, ['Assets'], 'Y');
     const netIncome = extractMetric(facts, ['ProfitLoss'], 'Y');
     const eps = extractMetric(facts, ['BasicEarningsLossPerShare'], 'Y');
+    const interimRevenue = extractMetric(facts, ['Revenue'], 'I');
 
     expect(revenue.length).toBeGreaterThanOrEqual(5);
     expect(assets.length).toBeGreaterThanOrEqual(5);
     expect(netIncome.length).toBeGreaterThanOrEqual(5);
     expect(eps.length).toBeGreaterThanOrEqual(5);
+    expect(interimRevenue.length).toBeGreaterThanOrEqual(1);
+    expect(interimRevenue.every((row) => row.form === '6-K')).toBe(true);
     expect(revenue.find((row) => row._periodKey === '2024')?.val).toBe(88_268_000_000);
   });
 
-  test('does not mislabel local-currency-only or 6-K facts as quarterly USD data', () => {
+  test('keeps local currency when USD is unavailable', () => {
     const localCurrencyOnly = {
       'ifrs-full': {
         DividendsPaid: {
@@ -137,8 +146,54 @@ describe('metric extraction', () => {
         },
       },
     };
-    expect(extractMetric(localCurrencyOnly, ['DividendsPaid'], 'Y')).toEqual([]);
+    const rows = extractMetric(localCurrencyOnly, ['DividendsPaid'], 'Y');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]._secUnit).toBe('TWD');
+    expect(rows[0]._currency).toBe('TWD');
+  });
 
+  test('prefers USD across aliases but accepts custom taxonomies', () => {
+    const facts = {
+      'custom-company': {
+        LocalRevenue: {
+          units: {
+            TWD: [
+              {
+                end: '2024-12-31',
+                val: 3_000,
+                fy: 2024,
+                fp: 'FY',
+                form: '20-F',
+                filed: '2025-04-17',
+              },
+            ],
+          },
+        },
+        Revenue: {
+          units: {
+            USD: [
+              {
+                end: '2024-12-31',
+                val: 100,
+                fy: 2024,
+                fp: 'FY',
+                form: '20-F',
+                filed: '2025-04-17',
+              },
+            ],
+          },
+        },
+      },
+    };
+    expect(hasUsableFacts(facts)).toBe(true);
+    const rows = extractMetric(facts, ['LocalRevenue', 'Revenue'], 'Y');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].val).toBe(100);
+    expect(rows[0]._currency).toBe('USD');
+    expect(rows[0]._taxonomy).toBe('custom-company');
+  });
+
+  test('keeps 6-K facts in a separate interim mode', () => {
     const interim = {
       'ifrs-full': {
         Revenue: {
@@ -159,6 +214,18 @@ describe('metric extraction', () => {
       },
     };
     expect(extractMetric(interim, ['Revenue'], 'Q')).toEqual([]);
+    const rows = extractMetric(interim, ['Revenue'], 'I');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]._periodKey).toBe('2024-06-30');
+    expect(rows[0]._periodLabel).toBe('2024 H1');
+    expect(inspectReporting(interim, rows)).toEqual({
+      availableTaxonomies: ['ifrs-full'],
+      availableForms: ['6-K'],
+      availableCurrencies: ['USD'],
+      usedTaxonomies: ['ifrs-full'],
+      usedForms: ['6-K'],
+      usedCurrencies: ['USD'],
+    });
   });
 
   test('keeps US 10-K and 10-Q support', () => {
