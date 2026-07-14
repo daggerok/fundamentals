@@ -68,6 +68,8 @@ describe('SEC cache schedule', () => {
       '55 0-23 * * 0-6',
     ];
     for (const cron of crons) expect(updateWorkflow).toContain(`cron: "${cron}"`);
+    expect(updateWorkflow).toContain('MAX_FETCHES: "500"');
+    expect(updateWorkflow).toContain('MAX_RETRIES: "2"');
     expect(updateWorkflow).toContain('REQUEST_SLEEP: "0.5"');
   });
 });

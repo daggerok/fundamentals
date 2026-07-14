@@ -4,7 +4,7 @@ name: Update SEC data
 
 on:
   schedule:
-    # A few times on weekdays — each run covers MAX_FETCHES new/stale tickers
+    # Every day (0-6, Sun-Sat), staggered six times per hour (UTC).
     - cron: "0 0-3 * * 0-6"
     - cron: "1 4-7 * * 0-6"
     - cron: "2 8-11 * * 0-6"
@@ -26,9 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: "1"
-      MAX_FETCHES: "400"
-      MAX_RETRIES: "0.5"
-      REQUEST_SLEEP: "1"
+      MAX_FETCHES: "500"
+      MAX_RETRIES: "2"
+      REQUEST_SLEEP: "0.5"
       SKIP_FRESH_HOURS: "24"
       # UNIVERSE_SIZE: "0"   # 0 = all company_tickers; set e.g. 500 to limit
       # TICKERS: "AAPL MSFT" # optional explicit list
