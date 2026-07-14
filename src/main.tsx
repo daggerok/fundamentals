@@ -29,19 +29,18 @@ const LS_P = 'sec-dash-prefs';
 const LS_C = 'sec-dash-cache';
 const LS_LANG = 'sec-lang';
 
-const README_QUICKSTART =
-  'https://github.com/daggerok/fundamentals/blob/master/README.md#%D0%B1%D1%8B%D1%81%D1%82%D1%80%D1%8B%D0%B9-%D1%81%D1%82%D0%B0%D1%80%D1%82--quick-start';
+const PROXY_COMMAND = 'bun install -E && bun serve:proxy';
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
     'search.placeholder': 'Ticker or company name…',
     'search.load': 'Load data',
-    'proxy.title': 'Start proxies (required for live SEC data):',
+    'proxy.title': 'LIVE data needs the local SEC proxies.',
     'proxy.retry': '↻ Retry',
-    'proxy.orBun': 'Recommended (pm2, README quick start):',
+    'proxy.orBun': 'Run from the repository root:',
     'error.retry': 'Retry',
     'no.data': 'Enter a ticker (AAPL, MSFT, NVDA…)',
-    'console.toggle': 'Toggle debug console',
+    'console.toggle': 'Open debug panel',
     'metric': 'Metric',
     'section.income': '📊 Income Statement',
     'section.cash': '💰 Cash Flow',
@@ -55,7 +54,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.search': 'Search ticker',
     'tip.load': 'Load company data',
     'tip.proxy': 'Proxy status (www / data)',
-    'tip.proxyToggle': 'Toggle debug console / proxy log',
+    'tip.proxyToggle': 'Open debug panel',
     'settings.title': 'Settings',
     'settings.display': 'Display',
     'settings.data': 'Data & proxy',
@@ -71,15 +70,32 @@ const translations: Record<Language, Record<string, string>> = {
     'source.live.hint': 'Live SEC EDGAR via local proxy',
     'tip.source': 'CACHE (static) / LIVE (proxy)',
     'settings.scale': 'Text scale',
-    'settings.console': 'Debug console',
+    'settings.console': 'Debug panel',
     'settings.proxyWww': 'www.sec.gov proxy',
     'settings.proxyWwwUrl': 'www proxy base URL',
     'settings.proxyDataUrl': 'data proxy base URL',
     'settings.proxyReset': 'Reset proxy URLs to defaults',
     'settings.proxyData': 'data.sec.gov proxy',
     'settings.clearCache': 'Clear cached company',
-    'guide.details': 'Setup details (README)',
-    'proxy.actual': 'This app uses dual local-cors-proxy (www:8011 + data:8012) via bun start / bun run serve, or single Bun proxy: bun ./scripts/sec-proxy.ts + bun run serve:app.',
+    'proxy.actual': 'Start both SEC proxies with one command:',
+    'debug.title': 'Debug',
+    'debug.overview': 'Overview',
+    'debug.reporting': 'Reporting',
+    'debug.connection': 'Data connection',
+    'debug.activity': 'Recent activity',
+    'debug.status': 'Status',
+    'debug.company': 'Company',
+    'debug.source': 'Source',
+    'debug.period': 'Period',
+    'debug.taxonomies': 'Taxonomies',
+    'debug.reports': 'Reports',
+    'debug.currencies': 'Currencies',
+    'debug.used': 'Used',
+    'debug.available': 'Available',
+    'debug.ready': 'Ready',
+    'debug.loading': 'Loading',
+    'debug.idle': 'Idle',
+    'debug.none': 'No activity yet',
     'cache.restored': 'Restored from cache',
     'settings.close': 'Close',
     'view.charts': 'Charts',
@@ -133,12 +149,12 @@ const translations: Record<Language, Record<string, string>> = {
   ru: {
     'search.placeholder': 'Тикер или название компании…',
     'search.load': 'Загрузить',
-    'proxy.title': 'Запустите прокси (нужны для live SEC data):',
+    'proxy.title': 'Для LIVE-данных нужны локальные SEC-прокси.',
     'proxy.retry': '↻ Повтор',
-    'proxy.orBun': 'Рекомендуется (pm2, README quick start):',
+    'proxy.orBun': 'Запустите из корня репозитория:',
     'error.retry': 'Повтор',
     'no.data': 'Введите тикер (AAPL, MSFT, NVDA…)',
-    'console.toggle': 'Консоль отладки',
+    'console.toggle': 'Открыть панель отладки',
     'metric': 'Метрика',
     'section.income': '📊 Отчёт о прибылях и убытках',
     'section.cash': '💰 Денежный поток',
@@ -152,7 +168,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.search': 'Поиск тикера',
     'tip.load': 'Загрузить данные компании',
     'tip.proxy': 'Статус прокси (www / data)',
-    'tip.proxyToggle': 'Консоль прокси / отладка',
+    'tip.proxyToggle': 'Открыть панель отладки',
     'settings.title': 'Настройки',
     'settings.display': 'Отображение',
     'settings.data': 'Данные и прокси',
@@ -168,15 +184,32 @@ const translations: Record<Language, Record<string, string>> = {
     'source.live.hint': 'Live SEC EDGAR через локальный прокси',
     'tip.source': 'CACHE (статика) / LIVE (прокси)',
     'settings.scale': 'Масштаб текста',
-    'settings.console': 'Консоль отладки',
+    'settings.console': 'Панель отладки',
     'settings.proxyWww': 'Прокси www.sec.gov',
     'settings.proxyWwwUrl': 'URL прокси www',
     'settings.proxyDataUrl': 'URL прокси data',
     'settings.proxyReset': 'Сбросить URL прокси',
     'settings.proxyData': 'Прокси data.sec.gov',
     'settings.clearCache': 'Очистить кэш компании',
-    'guide.details': 'Подробности (README)',
-    'proxy.actual': 'Приложение использует dual local-cors-proxy (www:8011 + data:8012) через bun start / bun run serve, либо один Bun-прокси: bun ./scripts/sec-proxy.ts + bun run serve:app.',
+    'proxy.actual': 'Запустите оба SEC-прокси одной командой:',
+    'debug.title': 'Отладка',
+    'debug.overview': 'Обзор',
+    'debug.reporting': 'Отчётность',
+    'debug.connection': 'Подключение к данным',
+    'debug.activity': 'Последние события',
+    'debug.status': 'Статус',
+    'debug.company': 'Компания',
+    'debug.source': 'Источник',
+    'debug.period': 'Период',
+    'debug.taxonomies': 'Таксономии',
+    'debug.reports': 'Отчёты',
+    'debug.currencies': 'Валюты',
+    'debug.used': 'Использовано',
+    'debug.available': 'Доступно',
+    'debug.ready': 'Готово',
+    'debug.loading': 'Загрузка',
+    'debug.idle': 'Ожидание',
+    'debug.none': 'Событий пока нет',
     'cache.restored': 'Восстановлено из кэша',
     'settings.close': 'Закрыть',
     'view.charts': 'Графики',
@@ -802,31 +835,6 @@ function proc(facts: any, mode: Mode) {
   };
 }
 
-function reportingDebugText(info: ReportingInfo): string {
-  const standards: string[] = [];
-  if (info.usedTaxonomies.includes('us-gaap')) standards.push('US-GAAP (us-gaap)');
-  if (info.usedTaxonomies.includes('ifrs-full')) standards.push('IFRS (ifrs-full)');
-  const otherUsed = info.usedTaxonomies.filter(
-    (taxonomy) => taxonomy !== 'us-gaap' && taxonomy !== 'ifrs-full',
-  );
-  if (otherUsed.length) standards.push(`other (${otherUsed.join(', ')})`);
-
-  const parts = [
-    standards.length ? `used ${standards.join(' + ')}` : 'no recognized metrics used',
-    `reports ${info.usedForms.join(', ') || '—'}`,
-    `currencies ${info.usedCurrencies.join(', ') || '—'}`,
-    `available reports ${info.availableForms.join(', ') || '—'}`,
-  ];
-  if (
-    info.usedTaxonomies.includes('ifrs-full') &&
-    !info.availableTaxonomies.includes('us-gaap') &&
-    info.usedForms.includes('20-F')
-  ) {
-    parts.push('not US-GAAP/10-K');
-  }
-  return parts.join(' · ');
-}
-
 const MiniChart = ({
   data,
   color,
@@ -1055,6 +1063,7 @@ function App() {
   const iRef = useRef<HTMLInputElement>(null);
   const loadBtnRef = useRef<HTMLButtonElement>(null);
   const sRef = useRef<HTMLDivElement>(null);
+  const debugRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   const scale = sliderToScale(scaleSlider);
@@ -1144,6 +1153,9 @@ function App() {
         !iRef.current.contains(e.target as Node)
       )
         setShowSug(false);
+      if (showDebug && debugRef.current && !debugRef.current.contains(e.target as Node)) {
+        setShowDebug(false);
+      }
       if (
         showSettings &&
         settingsRef.current &&
@@ -1153,7 +1165,7 @@ function App() {
     };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
-  }, [showSug, showSettings]);
+  }, [showSug, showDebug, showSettings]);
 
   const init = async () => {
     setTkL(true);
@@ -1412,40 +1424,204 @@ function App() {
   const tblHFs = `${Math.round(11 * scale)}px`;
   const tblCellPy = `${Math.round(10 * scale)}px`;
 
-  const guideLink = (
-    <a
-      href={README_QUICKSTART}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-emerald-500 hover:underline text-xs font-semibold"
-    >
-      📖 {t('guide.details', lang)}
-    </a>
-  );
+  const debugStatus = loading || tkL
+    ? t('debug.loading', lang)
+    : error
+      ? `Error: ${error.split('\n')[0]}`
+      : company && dataOk
+        ? t('debug.ready', lang)
+        : t('debug.idle', lang);
 
   return (
     <Fragment>
       <div className={`sticky top-0 z-50 ${bg} backdrop-blur-md border-b ${bdr}`}>
         <div className="px-4 xl:px-8">
           <div className="flex items-center gap-2 sm:gap-3 py-3">
-            {/* 1. Proxy / console toggle (prev runtime left control) */}
-            <button
-              type="button"
-              onClick={() => setShowDebug((p) => !p)}
-              title={t('tip.proxyToggle', lang)}
-              aria-label={t('tip.proxyToggle', lang)}
-              className={`flex-shrink-0 text-xs px-2 py-1.5 rounded-lg transition-colors ${
-                showDebug
-                  ? dark
-                    ? 'bg-slate-700 text-slate-300'
-                    : 'bg-slate-200 text-slate-600'
-                  : dark
-                    ? 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'
-                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              ⌘
-            </button>
+            {/* 1. Debug popover — overlay, does not move the app */}
+            <div className="relative flex-shrink-0" ref={debugRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSettings(false);
+                  setShowDebug((open) => !open);
+                }}
+                title={t('tip.proxyToggle', lang)}
+                aria-label={t('tip.proxyToggle', lang)}
+                aria-expanded={showDebug}
+                className={`text-xs px-2 py-1.5 rounded-lg transition-colors ${
+                  showDebug
+                    ? dark
+                      ? 'bg-slate-700 text-emerald-400'
+                      : 'bg-slate-200 text-emerald-700'
+                    : dark
+                      ? 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'
+                      : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                ⌘
+              </button>
+
+              {showDebug && (
+                <div
+                  role="dialog"
+                  aria-label={t('debug.title', lang)}
+                  className={`absolute left-0 top-full mt-2 w-[min(92vw,30rem)] max-h-[min(80vh,42rem)] overflow-y-auto z-[70] ${card} border rounded-xl shadow-xl p-3 space-y-3 ${scCls}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className={`font-bold text-sm ${t1}`}>⌘ {t('debug.title', lang)}</div>
+                    <button
+                      type="button"
+                      className={`text-xs px-2 py-1 rounded ${dark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} ${mt}`}
+                      onClick={() => setShowDebug(false)}
+                      title={t('settings.close', lang)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide ${mt}`}>
+                    {t('debug.overview', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} divide-y ${bdr}`}>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <span className={`text-xs ${mt}`}>{t('debug.status', lang)}</span>
+                      <span className={`text-xs font-mono text-right break-words ${error ? 'text-red-500' : loading || tkL ? 'text-amber-500' : 'text-emerald-500'}`}>
+                        {debugStatus}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <span className={`text-xs ${mt}`}>{t('debug.company', lang)}</span>
+                      <span className={`text-xs font-mono text-right ${t1}`}>
+                        {company?.ticker || (ticker || '').trim().toUpperCase() || '—'}
+                        {company?.cik ? ` · CIK ${company.cik}` : ''}
+                      </span>
+                    </div>
+                    {company?.title && (
+                      <div className={`px-3 py-2 text-xs break-words ${t2}`}>{company.title}</div>
+                    )}
+                    <div className="grid grid-cols-2 divide-x divide-inherit">
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.source', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>
+                          {dataSource === 'cache' ? 'CACHE' : 'LIVE'}
+                        </div>
+                      </div>
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.period', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>{mode}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('debug.reporting', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} divide-y ${bdr}`}>
+                    {[
+                      {
+                        label: `${t('debug.used', lang)} ${t('debug.taxonomies', lang)}`,
+                        value: reporting?.usedTaxonomies.join(', '),
+                      },
+                      {
+                        label: `${t('debug.used', lang)} ${t('debug.reports', lang)}`,
+                        value: reporting?.usedForms.join(', '),
+                      },
+                      {
+                        label: `${t('debug.used', lang)} ${t('debug.currencies', lang)}`,
+                        value: reporting?.usedCurrencies.join(', '),
+                      },
+                      {
+                        label: `${t('debug.available', lang)} ${t('debug.taxonomies', lang)}`,
+                        value: reporting?.availableTaxonomies.join(', '),
+                      },
+                      {
+                        label: `${t('debug.available', lang)} ${t('debug.reports', lang)}`,
+                        value: reporting?.availableForms.join(', '),
+                      },
+                      {
+                        label: `${t('debug.available', lang)} ${t('debug.currencies', lang)}`,
+                        value: reporting?.availableCurrencies.join(', '),
+                      },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-start justify-between gap-3 px-3 py-2">
+                        <span className={`text-xs ${mt}`}>{row.label}</span>
+                        <span className={`text-xs font-mono text-right break-words ${t1}`}>
+                          {row.value || '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {reporting?.usedTaxonomies.includes('ifrs-full') &&
+                    !reporting.availableTaxonomies.includes('us-gaap') &&
+                    reporting.usedForms.includes('20-F') && (
+                      <div className={`rounded-lg px-3 py-2 text-xs ${dark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-800'}`}>
+                        IFRS (ifrs-full) · 20-F · not US-GAAP/10-K
+                      </div>
+                    )}
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('debug.connection', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} divide-y ${bdr}`}>
+                    {dataSource === 'live' ? (
+                      <>
+                        <div className="px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs ${mt}`}>www.sec.gov</span>
+                            <span className={`text-xs font-mono ${wwwOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                              {wwwOk ? '● online' : '● offline'}
+                            </span>
+                          </div>
+                          <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
+                            {wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY}
+                          </div>
+                        </div>
+                        <div className="px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs ${mt}`}>data.sec.gov</span>
+                            <span className={`text-xs font-mono ${dataOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                              {dataOk ? '● online' : '● offline'}
+                            </span>
+                          </div>
+                          <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
+                            {dataBase || dataProxyUrl || DEFAULT_DATA_PROXY}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs ${mt}`}>Static cache</span>
+                          <span className={`text-xs font-mono ${dataOk ? 'text-emerald-500' : mt}`}>
+                            {dataOk ? '● loaded' : '● waiting'}
+                          </span>
+                        </div>
+                        <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
+                          ./data/{company?.ticker || '{TICKER}'}.json
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
+                    {t('debug.activity', lang)}
+                  </div>
+                  <div className={`rounded-lg border ${bdr} p-2 max-h-40 overflow-y-auto ${scCls}`}>
+                    {logs.length ? (
+                      <div className="space-y-1">
+                        {logs.slice(-10).map((entry, index) => (
+                          <div key={`${index}-${entry}`} className={`text-[10px] font-mono whitespace-pre-wrap break-words ${entry.startsWith('❌') ? 'text-red-500' : entry.startsWith('✅') ? 'text-emerald-500' : t2}`}>
+                            {entry}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className={`text-xs ${mt}`}>{t('debug.none', lang)}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 2. Proxy online indicators */}
             <div
@@ -1618,7 +1794,10 @@ function App() {
             <div className="relative flex-shrink-0" ref={settingsRef}>
               <button
                 type="button"
-                onClick={() => setShowSettings((v) => !v)}
+                onClick={() => {
+                  setShowDebug(false);
+                  setShowSettings((open) => !open);
+                }}
                 title={t('tip.settings', lang)}
                 aria-label={t('tip.settings', lang)}
                 aria-expanded={showSettings}
@@ -1819,27 +1998,11 @@ function App() {
                       {t('proxy.retry', lang)}
                     </button>
                   </div>
-                  <div className="grid gap-2">
+                  <div className="space-y-1">
+                    <div className={`text-[10px] ${mt}`}>{t('proxy.actual', lang)}</div>
                     <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bun start  # dual local-cors-proxy 8011/8012 + app`}</pre>
-                    <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011`}</pre>
-                    <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012`}</pre>
-                    <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[10px] font-mono overflow-x-auto`}
-                    >{`bun ./scripts/sec-proxy.ts && bun run serve:app`}</pre>
-                    <a
-                      href={README_QUICKSTART}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-emerald-500 hover:underline text-[11px] font-semibold"
-                    >
-                      📖 {t('guide.details', lang)}
-                    </a>
+                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[11px] font-mono overflow-x-auto`}
+                    >{PROXY_COMMAND}</pre>
                   </div>
                   <button
                     type="button"
@@ -1869,7 +2032,11 @@ function App() {
                         { k: 'off', l: t('off', lang) },
                         { k: 'on', l: t('on', lang) },
                       ]}
-                      onChange={(k) => setShowDebug(k === 'on')}
+                      onChange={(k) => {
+                        const open = k === 'on';
+                        setShowDebug(open);
+                        if (open) setShowSettings(false);
+                      }}
                       dark={dark}
                       title={t('console.toggle', lang)}
                     />
@@ -1879,146 +2046,20 @@ function App() {
             </div>
           </div>
 
-          <div className={`console-wrap ${showDebug ? 'open' : ''}`}>
-            <div className="console-inner">
-              <div className="pb-2 -mt-1">
-                <div
-                  className={`${dark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-nowrap ${scCls}`}
-                >
-                  {(() => {
-                    const parts: React.ReactNode[] = [];
-                    const push = (node: React.ReactNode) => {
-                      if (parts.length) {
-                        parts.push(
-                          <span key={`sep-${parts.length}`} className={dark ? 'text-slate-700' : 'text-slate-300'}>
-                            {' · '}
-                          </span>,
-                        );
-                      }
-                      parts.push(node);
-                    };
-
-                    if (company?.ticker && company?.cik) {
-                      push(
-                        <span key="cik" className={t1}>
-                          {company.ticker} → CIK {company.cik}
-                        </span>,
-                      );
-                    } else if ((ticker || '').trim()) {
-                      push(
-                        <span key="tk" className={mt}>
-                          {(ticker || '').trim().toUpperCase()}
-                        </span>,
-                      );
-                    }
-
-                    push(
-                      <span key="src" className={t1}>
-                        {dataSource === 'cache' ? 'CACHE' : 'LIVE'}
-                      </span>,
-                    );
-                    if (reporting) {
-                      push(
-                        <span
-                          key="reporting"
-                          className={dark ? 'text-amber-300' : 'text-amber-700'}
-                          title={`Available taxonomies: ${reporting.availableTaxonomies.join(', ') || '—'}; available currencies: ${reporting.availableCurrencies.join(', ') || '—'}`}
-                        >
-                          📄 {reportingDebugText(reporting)}
-                        </span>,
-                      );
-                    }
-                    if (dataSource === 'live') {
-                      const dataUrl = dataBase || dataProxyUrl || DEFAULT_DATA_PROXY;
-                      const wwwUrl = wwwBase || wwwProxyUrl || DEFAULT_WWW_PROXY;
-                      push(
-                        <span key="data" className={dataOk ? 'text-emerald-500' : 'text-red-500'}>
-                          {dataOk ? '✅' : '❌'} data proxy: {dataUrl}
-                        </span>,
-                      );
-                      push(
-                        <span key="www" className={wwwOk ? 'text-emerald-500' : 'text-red-500'}>
-                          {wwwOk ? '✅' : '❌'} www proxy: {wwwUrl}
-                        </span>,
-                      );
-                    } else {
-                      push(
-                        <span key="cache" className={dataOk ? 'text-emerald-500' : mt}>
-                          {dataOk ? '✅' : '…'} ./data/{'{TICKER}'}.json
-                        </span>,
-                      );
-                    }
-
-                    const last = logs.length ? logs[logs.length - 1] : '';
-                    const done =
-                      last.startsWith('✅ Done') ||
-                      last === '✅ Done' ||
-                      (company && dataOk && !loading && !error);
-                    const failed = last.startsWith('❌') || (!!error && !loading);
-                    if (done) {
-                      push(
-                        <span key="done" className="text-emerald-500">
-                          ✅ Done
-                        </span>,
-                      );
-                    } else if (failed) {
-                      push(
-                        <span key="err" className="text-red-500">
-                          ❌ {error || last.replace(/^❌\s*/, '') || 'Error'}
-                        </span>,
-                      );
-                    } else if (loading || tkL) {
-                      push(
-                        <span key="load" className={mt}>
-                          …
-                        </span>,
-                      );
-                    }
-
-                    return parts.length ? parts : <span className={mt}>—</span>;
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
       <div className="px-4 xl:px-8 py-6">
         {!tickers && !tkL && (
           <div className={`${card} border rounded-xl p-5 mb-6 text-sm max-w-3xl mx-auto`}>
-            <p className={`font-bold mb-2 ${t1}`}>{t('proxy.title', lang)}</p>
-            <p className={`text-xs mb-3 ${t2}`}>{t('proxy.actual', lang)}</p>
-            <p className={`text-xs font-semibold mb-1 ${mt}`}>{t('proxy.orBun', lang)}</p>
+            <p className={`font-bold mb-1 ${t1}`}>{t('proxy.title', lang)}</p>
+            <p className={`text-xs mb-3 ${mt}`}>{t('proxy.orBun', lang)}</p>
             <pre
-              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono mb-3`}
-            >{`bun install -E
-bun stop ; bun kill ; bun ps ; bun start ; bun logs
-# dual local-cors-proxy :8011 www + :8012 data + Parcel`}</pre>
-            <p className={`text-xs font-semibold mb-1 ${mt}`}>Manual dual proxy</p>
-            <div className="grid md:grid-cols-2 gap-3">
-              <pre
-                className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-              >{`bunx local-cors-proxy \
-  --proxyUrl https://www.sec.gov \
-  --port 8011`}</pre>
-              <pre
-                className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-              >{`bunx local-cors-proxy \
-  --proxyUrl https://data.sec.gov \
-  --port 8012`}</pre>
-            </div>
-            <p className={`mt-3 text-xs font-semibold mb-1 ${mt}`}>Single Bun SEC proxy + app</p>
-            <pre
-              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono`}
-            >{`bun ./scripts/sec-proxy.ts
-bun run serve:app`}</pre>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button onClick={init} className="text-emerald-500 text-xs hover:underline">
-                {t('proxy.retry', lang)}
-              </button>
-              {guideLink}
-            </div>
+              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono overflow-x-auto`}
+            >{PROXY_COMMAND}</pre>
+            <button onClick={init} className="mt-3 text-emerald-500 text-xs hover:underline">
+              {t('proxy.retry', lang)}
+            </button>
           </div>
         )}
 
@@ -2028,15 +2069,15 @@ bun run serve:app`}</pre>
               <span className="flex-shrink-0 mt-0.5">✕</span>
               <span className="flex-1 font-mono text-xs">{error}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-3 pl-5">
+            {error.includes('Proxy not reachable') && (
+              <pre
+                className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-red-50 text-red-700'} ml-5 p-2 rounded text-[11px] font-mono overflow-x-auto`}
+              >{PROXY_COMMAND}</pre>
+            )}
+            <div className="pl-5">
               <button onClick={init} className="text-xs hover:underline font-semibold">
                 {t('error.retry', lang)}
               </button>
-              {guideLink}
-            </div>
-            <div className={`pl-5 text-[11px] space-y-1 ${mt}`}>
-              <div>{t('proxy.actual', lang)}</div>
-              <div className="font-mono text-[10px]">bun start  ·  bun ./scripts/sec-proxy.ts + bun run serve:app</div>
             </div>
           </div>
         )}

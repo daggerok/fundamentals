@@ -17,15 +17,6 @@
 .light-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 .light-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 
-.console-wrap {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.25s ease-out, opacity 0.25s ease-out;
-  opacity: 0;
-}
-.console-wrap.open { grid-template-rows: 1fr; opacity: 1; }
-.console-inner { overflow: hidden; }
-
 input[type='range'].scale-slider {
   -webkit-appearance: none;
   appearance: none;
