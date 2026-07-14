@@ -208,6 +208,8 @@ The report selector supports:
 - **Q** — quarterly `10-Q` reports, plus annual FY reference points.
 - **I** — foreign interim `6-K` reports, labeled from their actual period (`H1`, `9M`, or date range) rather than pretending they are discrete quarters.
 
-Metric extraction searches every returned taxonomy, including `us-gaap`, `ifrs-full`, and custom taxonomies. USD is preferred when available; otherwise local-currency data is retained and chart names show the currency, such as `Revenue (TWD)` or `Revenue (non-USD)`. Only unavailable metrics are omitted. The debug status shows the taxonomies, forms, and currencies actually used, plus all report forms available for the ticker.
+Metric extraction searches every returned taxonomy, including `us-gaap`, `ifrs-full`, and custom taxonomies. **Prefer USD currency** in Settings is off by default: the app uses the detected issuer currency, while enabling it selects SEC-provided USD units for each recognized metric when that same metric has USD data. No FX conversion is performed. Non-USD chart names show the selected currency, such as `Revenue (TWD)` or `Revenue (non-USD)`; USD titles remain unchanged. Only unavailable metrics are omitted.
+
+Debug distinguishes response-wide **Available currencies** from metric-level **Used currencies**. For example, ASML's response contains a few USD facts for derivatives, commitments, and option exercise prices, but its recognized revenue and statement metrics are EUR-only, so enabling USD preference does not change those EUR charts.
 
 GitHub Action **Update SEC data** grows the cache on a schedule (`MAX_FETCHES` per run).

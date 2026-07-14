@@ -18,6 +18,13 @@ export type ReportingInfo = {
   usedCurrencies: string[];
 };
 
+export type CurrencyPreference = {
+  /** Prefer SEC-provided USD units for the same recognized metric. No FX conversion. */
+  preferUsd?: boolean;
+  /** Issuer/reporting currency to prefer when USD preference is disabled or unavailable. */
+  preferredCurrency?: string | null;
+};
+
 /**
  * Return the taxonomy map from either a raw SEC companyfacts response or the
  * repository's data/{TICKER}.json cache wrapper. SEC companyfacts responses do
@@ -137,17 +144,42 @@ function rowIsSupported(row: any, mode: DataMode): boolean {
   return baseForm(row?.form) === '10-Q' || isAnnualFiling(row);
 }
 
-function unitRank(unit: string): number {
-  if (unit === 'USD' || unit === 'USD/shares') return 0;
-  if (unit === 'shares' || unit === 'pure') return 1;
-  if (/^[A-Z]{3}(?:\/shares)?$/.test(unit)) return 2;
-  return 3;
-}
-
 export function currencyFromUnit(unit: string): string | null {
   if (unit === 'shares' || unit === 'pure') return null;
   const currency = unit.match(/^([A-Z]{3})(?:\/shares)?$/)?.[1];
   return currency || 'non-USD';
+}
+
+function selectUnit(candidates: UnitCandidate[], preference: CurrencyPreference): string | null {
+  const units = [...new Set(candidates.map((candidate) => candidate.unit))];
+  const currencyUnit = (currency: string) =>
+    units.find((unit) => currencyFromUnit(unit) === currency);
+  const monetaryUnits = units.filter((unit) => currencyFromUnit(unit));
+
+  if (monetaryUnits.length) {
+    const preferUsd = preference.preferUsd ?? true;
+    if (preferUsd) {
+      const usd = currencyUnit('USD');
+      if (usd) return usd;
+    }
+
+    if (preference.preferredCurrency) {
+      const preferred = currencyUnit(preference.preferredCurrency);
+      if (preferred) return preferred;
+    }
+
+    if (!preferUsd) {
+      const local = monetaryUnits.find((unit) => {
+        const currency = currencyFromUnit(unit);
+        return currency && currency !== 'USD' && currency !== 'non-USD';
+      });
+      if (local) return local;
+    }
+
+    return currencyUnit('USD') || monetaryUnits[0];
+  }
+
+  return units.find((unit) => unit === 'shares' || unit === 'pure') || units[0] || null;
 }
 
 type UnitCandidate = {
@@ -157,15 +189,45 @@ type UnitCandidate = {
   rows: any[];
 };
 
+/** Detect the dominant non-USD reporting currency for the selected report mode. */
+export function detectPrimaryCurrency(facts: any, mode: DataMode): string | null {
+  const counts = new Map<string, number>();
+  for (const [, taxonomy] of taxonomyEntries(facts)) {
+    for (const fact of Object.values(taxonomy) as any[]) {
+      for (const [unit, rows] of Object.entries(fact?.units || {})) {
+        if (!Array.isArray(rows)) continue;
+        const currency = currencyFromUnit(unit);
+        if (!currency || currency === 'non-USD') continue;
+        const count = rows.filter((row) => rowIsSupported(row, mode)).length;
+        if (count) counts.set(currency, (counts.get(currency) || 0) + count);
+      }
+    }
+  }
+
+  return (
+    [...counts.entries()].sort(
+      (a, b) =>
+        b[1] - a[1] ||
+        Number(b[0] === 'USD') - Number(a[0] === 'USD') ||
+        a[0].localeCompare(b[0]),
+    )[0]?.[0] || null
+  );
+}
+
 /**
  * Extract one dashboard metric from every returned SEC taxonomy.
  *
- * USD wins when it exists anywhere among the recognized concept aliases. If no
- * USD series exists, the best local-currency/non-USD series is retained and its
- * unit metadata is returned for chart labeling. Annual 10-K/20-F/40-F, quarterly
- * 10-Q, and foreign interim 6-K reports are kept in distinct display modes.
+ * Currency selection is per metric and uses SEC-provided units only—values are
+ * never converted with an FX rate. The caller may prefer USD or the detected
+ * issuer currency. Annual 10-K/20-F/40-F, quarterly 10-Q, and foreign interim
+ * 6-K reports are kept in distinct display modes.
  */
-export function extractMetric(facts: any, keys: string[], mode: DataMode): ExtractedFact[] {
+export function extractMetric(
+  facts: any,
+  keys: string[],
+  mode: DataMode,
+  preference: CurrencyPreference = {},
+): ExtractedFact[] {
   const candidates: UnitCandidate[] = [];
   for (const [taxonomyName, taxonomy] of taxonomyEntries(facts)) {
     for (const concept of keys) {
@@ -180,8 +242,7 @@ export function extractMetric(facts: any, keys: string[], mode: DataMode): Extra
   }
   if (!candidates.length) return [];
 
-  const bestRank = Math.min(...candidates.map((candidate) => unitRank(candidate.unit)));
-  const selectedUnit = candidates.find((candidate) => unitRank(candidate.unit) === bestRank)?.unit;
+  const selectedUnit = selectUnit(candidates, preference);
   if (!selectedUnit) return [];
 
   const currency = currencyFromUnit(selectedUnit);
@@ -233,7 +294,8 @@ export function inspectReporting(facts: any, usedRows: ExtractedFact[]): Reporti
     for (const fact of Object.values(taxonomy) as any[]) {
       for (const [unit, rows] of Object.entries(fact?.units || {})) {
         const currency = currencyFromUnit(unit);
-        if (currency) availableCurrencies.add(currency);
+        // Unknown/custom units (employee, segment, rate, etc.) are not currencies.
+        if (currency && currency !== 'non-USD') availableCurrencies.add(currency);
         if (!Array.isArray(rows)) continue;
         for (const row of rows) {
           const form = baseForm(row?.form);

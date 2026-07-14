@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  detectPrimaryCurrency,
   extractMetric,
   hasUsableFacts,
   inspectReporting,
@@ -64,6 +65,8 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.view': 'View',
     'settings.mode': 'Period',
     'settings.source': 'Data source',
+    'settings.preferUsd': 'Prefer USD currency',
+    'settings.preferUsd.hint': 'Use SEC-provided USD for each metric when available; otherwise use the issuer currency. No FX conversion.',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
     'source.cache.hint': 'Same-origin ./data/{TICKER}.json (pre-fetched for GitHub Pages)',
@@ -87,6 +90,9 @@ const translations: Record<Language, Record<string, string>> = {
     'debug.company': 'Company',
     'debug.source': 'Source',
     'debug.period': 'Period',
+    'debug.primaryCurrency': 'Primary currency',
+    'debug.preferUsd': 'Prefer USD',
+    'debug.currencyScope': 'Available currencies are response-wide; currency preference is applied separately to each recognized metric.',
     'debug.taxonomies': 'Taxonomies',
     'debug.reports': 'Reports',
     'debug.currencies': 'Currencies',
@@ -178,6 +184,8 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.view': 'Вид',
     'settings.mode': 'Период',
     'settings.source': 'Источник данных',
+    'settings.preferUsd': 'Предпочитать валюту USD',
+    'settings.preferUsd.hint': 'Использовать предоставленные SEC значения в USD для каждой метрики, когда они доступны; иначе использовать валюту эмитента. Без FX-конвертации.',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
     'source.cache.hint': 'Same-origin ./data/{TICKER}.json (префетч для GitHub Pages)',
@@ -201,6 +209,9 @@ const translations: Record<Language, Record<string, string>> = {
     'debug.company': 'Компания',
     'debug.source': 'Источник',
     'debug.period': 'Период',
+    'debug.primaryCurrency': 'Основная валюта',
+    'debug.preferUsd': 'Предпочитать USD',
+    'debug.currencyScope': 'Доступные валюты указаны для всего ответа; предпочтение валюты применяется отдельно к каждой распознанной метрике.',
     'debug.taxonomies': 'Таксономии',
     'debug.reports': 'Отчёты',
     'debug.currencies': 'Валюты',
@@ -690,9 +701,12 @@ const fA = (v: any, u: string) => {
 const sliderToScale = (v: number) => 0.7 + (v / 100) * 0.8;
 const DEFAULT_SCALE_SLIDER = 50;
 
-function proc(facts: any, mode: Mode) {
+function proc(facts: any, mode: Mode, preferUsd: boolean) {
+  const primaryCurrency = detectPrimaryCurrency(facts, mode);
   const ex: Record<string, any[]> = {};
-  for (const [key, concepts] of Object.entries(CON)) ex[key] = exM(facts, concepts, mode);
+  for (const [key, concepts] of Object.entries(CON)) {
+    ex[key] = exM(facts, concepts, mode, { preferUsd, preferredCurrency: primaryCurrency });
+  }
   const allE = Object.values(ex).flat() as any[];
   const source: Record<string, MetricSource> = {};
   for (const [key, rows] of Object.entries(ex)) {
@@ -830,6 +844,8 @@ function proc(facts: any, mode: Mode) {
     metricSource: source,
     computedSource,
     reporting: inspectReporting(facts, allE),
+    primaryCurrency,
+    preferUsd,
     periodKeys: pK,
     getLabel: gl,
   };
@@ -1052,6 +1068,7 @@ function App() {
   const [dataSource, setDataSource] = useState<DataSource>(
     () => (prefs.dataSource as DataSource) || defaultDataSource(),
   );
+  const [preferUsd, setPreferUsd] = useState<boolean>(() => prefs.preferUsd === true);
   const [view, setView] = useState<View>(prefs.view || 'C');
   const [dark, setDark] = useState(prefs.dark !== false);
   const [factsCache, setFactsCache] = useState<any>(cached?.facts || null);
@@ -1081,7 +1098,7 @@ function App() {
       setCompany(comp);
       setFactsCache(facts);
       setTicker(comp.ticker || prefs.ticker || 'AAPL');
-      const processed = proc(facts, mode);
+      const processed = proc(facts, mode, preferUsd);
       setPd(processed);
       setReporting(processed.reporting);
       setDataOk(true);
@@ -1091,8 +1108,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    sp({ ticker, mode, view, dark, scaleSlider, dataSource });
-  }, [ticker, mode, view, dark, scaleSlider, dataSource]);
+    sp({ ticker, mode, view, dark, scaleSlider, dataSource, preferUsd });
+  }, [ticker, mode, view, dark, scaleSlider, dataSource, preferUsd]);
 
   // Keep last loaded companyfacts in localStorage across reloads/close
   useEffect(() => {
@@ -1102,11 +1119,11 @@ function App() {
   useEffect(() => {
     const onLeave = () => {
       if (company && factsCache) sc({ facts: factsCache, company });
-      sp({ ticker, mode, view, dark, scaleSlider, dataSource });
+      sp({ ticker, mode, view, dark, scaleSlider, dataSource, preferUsd });
     };
     window.addEventListener('beforeunload', onLeave);
     return () => window.removeEventListener('beforeunload', onLeave);
-  }, [company, factsCache, ticker, mode, view, dark, scaleSlider, dataSource]);
+  }, [company, factsCache, ticker, mode, view, dark, scaleSlider, dataSource, preferUsd]);
 
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
@@ -1130,10 +1147,10 @@ function App() {
 
   useEffect(() => {
     if (!factsCache) return;
-    const processed = proc(normalizeFacts(factsCache), mode);
+    const processed = proc(normalizeFacts(factsCache), mode, preferUsd);
     setPd(processed);
     setReporting(processed.reporting);
-  }, [mode, factsCache]);
+  }, [mode, factsCache, preferUsd]);
 
   // After tickers load, enable load button focus if input already has a symbol
   useEffect(() => {
@@ -1263,7 +1280,7 @@ function App() {
             setWwwOk(true);
             setFactsCache(cachedFile.facts);
             setCompany(cachedFile.company);
-            const processed = proc(cachedFile.facts, mode);
+            const processed = proc(cachedFile.facts, mode, preferUsd);
             setPd(processed);
             setReporting(processed.reporting);
             sc({ facts: cachedFile.facts, company: cachedFile.company });
@@ -1286,7 +1303,7 @@ function App() {
           setWwwOk(true);
           setFactsCache(cachedFile.facts);
           setCompany(cachedFile.company);
-          const processed = proc(cachedFile.facts, mode);
+          const processed = proc(cachedFile.facts, mode, preferUsd);
           setPd(processed);
           setReporting(processed.reporting);
           sc({ facts: cachedFile.facts, company: cachedFile.company });
@@ -1320,7 +1337,7 @@ function App() {
       setFactsCache(facts);
       const comp = { title: co.title || raw?.entityName, cik, ticker: sym };
       setCompany(comp);
-      const processed = proc(facts, mode);
+      const processed = proc(facts, mode, preferUsd);
       setPd(processed);
       setReporting(processed.reporting);
       sc({ facts, company: comp });
@@ -1416,6 +1433,7 @@ function App() {
   const tblHFs = `${Math.round(11 * scale)}px`;
   const tblCellPy = `${Math.round(10 * scale)}px`;
 
+  const showCurrencyPreference = Boolean(pd?.primaryCurrency && pd.primaryCurrency !== 'USD');
   const debugStatus = loading || tkL
     ? t('debug.loading', lang)
     : error
@@ -1490,6 +1508,20 @@ function App() {
                         <div className={`text-xs font-mono font-semibold ${t1}`}>{mode}</div>
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 divide-x divide-inherit">
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.primaryCurrency', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>
+                          {pd?.primaryCurrency || '—'}
+                        </div>
+                      </div>
+                      <div className="px-3 py-2">
+                        <div className={`text-[10px] ${mt}`}>{t('debug.preferUsd', lang)}</div>
+                        <div className={`text-xs font-mono font-semibold ${t1}`}>
+                          {preferUsd ? t('on', lang) : t('off', lang)}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className={`text-[10px] font-bold uppercase tracking-wide pt-1 ${mt}`}>
@@ -1530,6 +1562,7 @@ function App() {
                       </div>
                     ))}
                   </div>
+                  <div className={`text-[10px] ${mt}`}>{t('debug.currencyScope', lang)}</div>
                   {reporting?.usedTaxonomies.includes('ifrs-full') &&
                     !reporting.availableTaxonomies.includes('us-gaap') &&
                     reporting.usedForms.includes('20-F') && (
@@ -1867,6 +1900,25 @@ function App() {
                     />
                   </div>
                   <div className={`text-[10px] ${mt}`}>{t(`source.${dataSource}.hint`, lang)}</div>
+                  {showCurrencyPreference && (
+                    <>
+                      <label
+                        className="flex items-center justify-between gap-3 cursor-pointer"
+                        title={t('settings.preferUsd.hint', lang)}
+                      >
+                        <span className={`text-xs ${t2}`}>{t('settings.preferUsd', lang)}</span>
+                        <input
+                          type="checkbox"
+                          checked={preferUsd}
+                          onChange={(event) => setPreferUsd(event.target.checked)}
+                          className="h-4 w-4 accent-emerald-500 cursor-pointer"
+                        />
+                      </label>
+                      <div className={`text-[10px] ${mt}`}>
+                        {t('settings.preferUsd.hint', lang)}
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-xs ${t2}`}>{t('settings.scale', lang)}</span>
