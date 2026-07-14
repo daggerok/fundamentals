@@ -10,11 +10,12 @@ import React, {
   Fragment,
 } from 'react';
 import { createRoot } from 'react-dom/client';
+import { extractMetric, normalizeFacts, staticDataUrl } from './data-utils';
 
 type Language = 'en' | 'ru';
 type Mode = 'Y' | 'Q';
 type View = 'T' | 'C';
-/** CACHE = same-origin /data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
+/** CACHE = same-origin data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
 type DataSource = 'cache' | 'live';
 
 const LS_P = 'sec-dash-prefs';
@@ -59,7 +60,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.source': 'Data source',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin /data/{TICKER}.json (pre-fetched for GitHub Pages)',
+    'source.cache.hint': 'Same-origin data/{TICKER}.json (pre-fetched for GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR via local proxy',
     'tip.source': 'CACHE (static) / LIVE (proxy)',
     'settings.scale': 'Text scale',
@@ -155,7 +156,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.source': 'Источник данных',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin /data/{TICKER}.json (префетч для GitHub Pages)',
+    'source.cache.hint': 'Same-origin data/{TICKER}.json (префетч для GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR через локальный прокси',
     'tip.source': 'CACHE (статика) / LIVE (прокси)',
     'settings.scale': 'Масштаб текста',
@@ -258,7 +259,13 @@ const CON: Record<string, string[]> = {
     'NetIncomeLossAvailableToCommonStockholdersBasic',
     'ProfitLoss',
   ],
-  eps: ['EarningsPerShareBasic', 'EarningsPerShareDiluted'],
+  eps: [
+    'EarningsPerShareBasic',
+    'EarningsPerShareDiluted',
+    // IFRS
+    'BasicEarningsLossPerShare',
+    'DilutedEarningsLossPerShare',
+  ],
   ocf: [
     'NetCashProvidedByUsedInOperatingActivities',
     'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations',
@@ -282,6 +289,7 @@ const CON: Record<string, string[]> = {
     // IFRS
     'DepreciationAndAmortisationExpense',
     'DepreciationExpense',
+    'AmortisationExpense',
   ],
   dividendsPaid: [
     'PaymentsOfDividends',
@@ -312,15 +320,20 @@ const CON: Record<string, string[]> = {
     'CashCashEquivalentsAndShortTermInvestments',
     'CashAndCashEquivalents',
   ],
-  shortTermDebt: ['ShortTermBorrowings', 'DebtCurrent'],
-  longTermDebt: ['LongTermDebt', 'LongTermDebtNoncurrent'],
+  shortTermDebt: ['ShortTermBorrowings', 'DebtCurrent', 'ShorttermBorrowings'],
+  longTermDebt: ['LongTermDebt', 'LongTermDebtNoncurrent', 'LongtermBorrowings'],
   inventory: ['InventoryNet', 'Inventories'],
   receivables: [
     'AccountsReceivableNetCurrent',
     'AccountsReceivableNet',
     'TradeAndOtherCurrentReceivables',
+    'CurrentTradeReceivables',
   ],
-  payables: ['AccountsPayableCurrent', 'TradeAndOtherCurrentPayables'],
+  payables: [
+    'AccountsPayableCurrent',
+    'TradeAndOtherCurrentPayables',
+    'TradeAndOtherCurrentPayablesToTradeSuppliers',
+  ],
   goodwill: ['Goodwill'],
   intangibles: ['IntangibleAssetsNetExcludingGoodwill', 'IntangibleAssetsOtherThanGoodwill'],
   ppe: ['PropertyPlantAndEquipmentNet', 'PropertyPlantAndEquipment'],
@@ -328,6 +341,8 @@ const CON: Record<string, string[]> = {
     'CommonStockSharesOutstanding',
     'WeightedAverageNumberOfShareOutstandingBasicAndDiluted',
     'WeightedAverageNumberOfDilutedSharesOutstanding',
+    'WeightedAverageShares',
+    'AdjustedWeightedAverageShares',
   ],
   rnd: ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'],
   sga: ['SellingGeneralAndAdministrativeExpense'],
@@ -468,7 +483,7 @@ function isGitHubPagesHost(): boolean {
 }
 
 function defaultDataSource(): DataSource {
-  // GitHub Pages → cache (static /data/*.json), local dev → live (proxy)
+  // GitHub Pages → cache (static data/*.json), local dev → live (proxy)
   return isGitHubPagesHost() ? 'cache' : 'live';
 }
 
@@ -541,25 +556,12 @@ async function probe(cands: string[], path: string): Promise<{ base: string; res
   throw new Error('Proxy not reachable:\n' + e.join('\n'));
 }
 
-function normalizeFacts(raw: any): any {
-  if (!raw) return null;
-  // raw may already be inner facts map { us-gaap, ifrs-full, ... }
-  if (raw['us-gaap'] || raw['ifrs-full']) return raw;
-  // raw may be full companyfacts payload { facts: { us-gaap, ifrs-full } }
-  if (raw.facts) {
-    if (raw.facts['us-gaap'] || raw.facts['ifrs-full']) return raw.facts;
-    // defensive: fact map may be already nested differently
-    return raw.facts;
-  }
-  return raw;
-}
-
-/** options-desk-style static file: /data/{TICKER}.json → { symbol, cik, title, facts } */
+/** options-desk-style static file: data/{TICKER}.json → { symbol, cik, title, facts } */
 async function loadStaticFacts(sym: string): Promise<{
   facts: any;
   company: { ticker: string; title: string; cik: string };
 } | null> {
-  const url = `/data/${encodeURIComponent(sym)}.json`;
+  const url = staticDataUrl(`${sym}.json`, document.baseURI);
   try {
     const r = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!r.ok) return null;
@@ -584,7 +586,9 @@ async function loadStaticManifest(): Promise<{
   count: number;
 } | null> {
   try {
-    const r = await fetch('/data/index.json', { headers: { Accept: 'application/json' } });
+    const r = await fetch(staticDataUrl('index.json', document.baseURI), {
+      headers: { Accept: 'application/json' },
+    });
     if (!r.ok) return null;
     const doc = await r.json();
     return {
@@ -597,48 +601,7 @@ async function loadStaticManifest(): Promise<{
   }
 }
 
-function exM(facts: any, keys: string[], mode: Mode) {
-  // Collect taxonomies: us-gaap primary, ifrs-full fallback for ADR 20-F (TSM, etc)
-  const taxonomies: any[] = [];
-  if (facts?.['us-gaap']) taxonomies.push(facts['us-gaap']);
-  if (facts?.['ifrs-full']) taxonomies.push(facts['ifrs-full']);
-  if (facts?.facts?.['us-gaap']) taxonomies.push(facts.facts['us-gaap']);
-  if (facts?.facts?.['ifrs-full']) taxonomies.push(facts.facts['ifrs-full']);
-  // Deduplicate by ref
-  const uniqueTax = Array.from(new Set(taxonomies));
-  if (uniqueTax.length === 0) return [];
-  let r: any[] = [];
-  for (const g of uniqueTax) {
-    for (const k of keys) {
-      const s =
-        g[k]?.units?.USD ||
-        g[k]?.units?.['USD/shares'] ||
-        g[k]?.units?.shares ||
-        g[k]?.units?.pure;
-      if (!s) continue;
-      if (mode === 'Y') r = r.concat(s.filter((p: any) => p.form === '10-K' && p.fp === 'FY'));
-      else
-        r = r.concat(
-          s.filter((p: any) => p.form === '10-Q' || (p.form === '10-K' && p.fp === 'FY')),
-        );
-    }
-  }
-  const m = new Map();
-  const o: Record<string, number> = { FY: 4, Q4: 4, Q3: 3, Q2: 2, Q1: 1 };
-  if (mode === 'Y')
-    r.sort((a, b) => +new Date(b.filed) - +new Date(a.filed)).forEach((x) => {
-      if (!m.has(x.fy)) m.set(x.fy, x);
-    });
-  else
-    r.sort((a, b) => +new Date(b.filed) - +new Date(a.filed)).forEach((x) => {
-      const k = `${x.fy}-${x.fp}`;
-      if (!m.has(k)) m.set(k, x);
-    });
-  return Array.from(m.values()).sort((a: any, b: any) => {
-    if (b.fy !== a.fy) return b.fy - a.fy;
-    return (o[b.fp] || 0) - (o[a.fp] || 0);
-  });
-}
+const exM = extractMetric;
 
 const fV = (v: any, u: string) => {
   if (v == null) return '—';
@@ -667,23 +630,17 @@ function proc(facts: any, mode: Mode) {
   const ex: any = {};
   for (const [k, c] of Object.entries(CON)) ex[k] = exM(facts, c, mode);
   const allE = Object.values(ex).flat() as any[];
-  let pK: any[];
-  if (mode === 'Y') pK = [...new Set(allE.map((d) => d.fy))].sort((a: any, b: any) => a - b);
-  else {
-    pK = [...new Set(allE.map((d) => `${d.fy}-${d.fp}`))];
-    pK.sort((a, b) => {
-      const [ay, af] = String(a).split('-'),
-        [by, bf] = String(b).split('-');
-      if (ay !== by) return Number(ay) - Number(by);
-      const o: any = { Q1: 1, Q2: 2, Q3: 3, FY: 4, Q4: 4 };
-      return (o[af] || 0) - (o[bf] || 0);
-    });
-  }
+  const pK = [...new Set(allE.map((d) => d._periodKey).filter(Boolean))];
+  pK.sort((a, b) => {
+    const [ay, af = 'FY'] = String(a).split('-'),
+      [by, bf = 'FY'] = String(b).split('-');
+    if (ay !== by) return Number(ay) - Number(by);
+    const order: Record<string, number> = { Q1: 1, Q2: 2, Q3: 3, FY: 4, Q4: 4 };
+    return (order[af] || 0) - (order[bf] || 0);
+  });
   const gv = (k: string, pk: any) => {
     const a = ex[k] || [];
-    if (mode === 'Y') return a.find((d: any) => d.fy === pk)?.val;
-    const [fy, fp] = String(pk).split('-');
-    return a.find((d: any) => d.fy === Number(fy) && d.fp === fp)?.val;
+    return a.find((d: any) => d._periodKey === pk)?.val;
   };
   const gl = (pk: any) => {
     if (mode === 'Y') return String(pk);
@@ -1061,7 +1018,7 @@ function App() {
       // Prefer static tickers on GitHub Pages
       let data: any = null;
       try {
-        const r = await fetch('/data/company_tickers.json');
+        const r = await fetch(staticDataUrl('company_tickers.json', document.baseURI));
         if (r.ok) {
           data = await r.json();
           const n = data && typeof data === 'object' ? Object.keys(data).length : 0;
@@ -1158,7 +1115,7 @@ function App() {
             setPd(proc(cachedFile.facts, mode));
             sc({ facts: cachedFile.facts, company: cachedFile.company });
             log(`${sym} → CIK ${cachedFile.company.cik}`);
-            log(`✅ CACHE /data/${sym}.json`);
+            log(`✅ CACHE data/${sym}.json`);
             log('✅ Done');
             return;
           }
@@ -1168,7 +1125,7 @@ function App() {
       const cik = String(co.cik_str ?? co.cik).padStart(10, '0');
       log(`${sym} → CIK ${cik}`);
 
-      // --- CACHE mode: same-origin /data/{TICKER}.json (options-desk pattern) ---
+      // --- CACHE mode: same-origin data/{TICKER}.json (options-desk pattern) ---
       if (dataSource === 'cache') {
         const cachedFile = await loadStaticFacts(sym);
         if (cachedFile) {
@@ -1178,12 +1135,12 @@ function App() {
           setCompany(cachedFile.company);
           setPd(proc(cachedFile.facts, mode));
           sc({ facts: cachedFile.facts, company: cachedFile.company });
-          log(`✅ CACHE /data/${sym}.json`);
+          log(`✅ CACHE data/${sym}.json`);
           log('✅ Done');
           return;
         }
         // fall through to LIVE if static miss (and log)
-        log(`CACHE miss /data/${sym}.json — trying LIVE proxy`);
+        log(`CACHE miss data/${sym}.json — trying LIVE proxy`);
       }
 
       // --- LIVE mode: SEC via proxy ---
@@ -1820,7 +1777,7 @@ function App() {
                     } else {
                       push(
                         <span key="cache" className={dataOk ? 'text-emerald-500' : mt}>
-                          {dataOk ? '✅' : '…'} /data/{'{TICKER}'}.json
+                          {dataOk ? '✅' : '…'} data/{'{TICKER}'}.json
                         </span>,
                       );
                     }

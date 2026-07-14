@@ -210,7 +210,11 @@ bun run build   # ncp → dist/data/
 
 
 In the app **Settings → Data source**:
-- **CACHE** (default on GitHub Pages): load `/data/{TICKER}.json` (no proxy)
-- **LIVE** (default on localhost): SEC via local proxy
+- **CACHE** (default on GitHub Pages): load app-relative `data/{TICKER}.json` (for example, `/fundamentals/data/TSM.json`; no proxy)
+- **LIVE** (default on localhost): resolve ticker → CIK with `company_tickers.json`, then fetch SEC companyfacts via the data proxy
+
+SEC companyfacts payloads are keyed by CIK and do **not** guarantee a `symbol` field. The app keeps the searched ticker from `company_tickers.json`; the pre-fetch script adds `symbol` and `ticker` only to the local cache wrapper.
+
+Annual IFRS facts from foreign issuers' `20-F` filings (for example TSM) are supported when the SEC provides USD units. Metrics that are absent or available only in local currency are left hidden rather than mislabeled as USD. `6-K` facts are not treated as discrete quarters because they may represent YTD or half-year periods.
 
 GitHub Action **Update SEC data** grows the cache on a schedule (`MAX_FETCHES` per run).
