@@ -1030,7 +1030,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const [showDebug, setShowDebug] = useState(!!prefs.showDebug);
+  // Menus are session UI only: both start closed after a hard refresh.
+  const [showDebug, setShowDebug] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [company, setCompany] = useState<any>(cached?.company || null);
   const [tickers, setTickers] = useState<any>(null);
@@ -1090,8 +1091,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    sp({ ticker, mode, view, dark, showDebug, scaleSlider, dataSource });
-  }, [ticker, mode, view, dark, showDebug, scaleSlider, dataSource]);
+    sp({ ticker, mode, view, dark, scaleSlider, dataSource });
+  }, [ticker, mode, view, dark, scaleSlider, dataSource]);
 
   // Keep last loaded companyfacts in localStorage across reloads/close
   useEffect(() => {
@@ -1101,11 +1102,11 @@ function App() {
   useEffect(() => {
     const onLeave = () => {
       if (company && factsCache) sc({ facts: factsCache, company });
-      sp({ ticker, mode, view, dark, showDebug, scaleSlider, dataSource });
+      sp({ ticker, mode, view, dark, scaleSlider, dataSource });
     };
     window.addEventListener('beforeunload', onLeave);
     return () => window.removeEventListener('beforeunload', onLeave);
-  }, [company, factsCache, ticker, mode, view, dark, showDebug, scaleSlider, dataSource]);
+  }, [company, factsCache, ticker, mode, view, dark, scaleSlider, dataSource]);
 
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
@@ -1153,19 +1154,10 @@ function App() {
         !iRef.current.contains(e.target as Node)
       )
         setShowSug(false);
-      if (showDebug && debugRef.current && !debugRef.current.contains(e.target as Node)) {
-        setShowDebug(false);
-      }
-      if (
-        showSettings &&
-        settingsRef.current &&
-        !settingsRef.current.contains(e.target as Node)
-      )
-        setShowSettings(false);
     };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
-  }, [showSug, showDebug, showSettings]);
+  }, [showSug]);
 
   const init = async () => {
     setTkL(true);
@@ -1441,10 +1433,7 @@ function App() {
             <div className="relative flex-shrink-0" ref={debugRef}>
               <button
                 type="button"
-                onClick={() => {
-                  setShowSettings(false);
-                  setShowDebug((open) => !open);
-                }}
+                onClick={() => setShowDebug((open) => !open)}
                 title={t('tip.proxyToggle', lang)}
                 aria-label={t('tip.proxyToggle', lang)}
                 aria-expanded={showDebug}
@@ -1465,7 +1454,7 @@ function App() {
                 <div
                   role="dialog"
                   aria-label={t('debug.title', lang)}
-                  className={`absolute left-0 top-full mt-2 w-[min(92vw,30rem)] max-h-[min(80vh,42rem)] overflow-y-auto z-[70] ${card} border rounded-xl shadow-xl p-3 space-y-3 ${scCls}`}
+                  className={`absolute left-0 top-full mt-2 w-[min(92vw,22rem)] z-[60] ${card} border rounded-xl shadow-xl p-3 space-y-3`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className={`font-bold text-sm ${t1}`}>⌘ {t('debug.title', lang)}</div>
@@ -1794,10 +1783,7 @@ function App() {
             <div className="relative flex-shrink-0" ref={settingsRef}>
               <button
                 type="button"
-                onClick={() => {
-                  setShowDebug(false);
-                  setShowSettings((open) => !open);
-                }}
+                onClick={() => setShowSettings((open) => !open)}
                 title={t('tip.settings', lang)}
                 aria-label={t('tip.settings', lang)}
                 aria-expanded={showSettings}
@@ -2032,11 +2018,7 @@ function App() {
                         { k: 'off', l: t('off', lang) },
                         { k: 'on', l: t('on', lang) },
                       ]}
-                      onChange={(k) => {
-                        const open = k === 'on';
-                        setShowDebug(open);
-                        if (open) setShowSettings(false);
-                      }}
+                      onChange={(k) => setShowDebug(k === 'on')}
                       dark={dark}
                       title={t('console.toggle', lang)}
                     />
