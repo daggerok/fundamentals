@@ -12,6 +12,7 @@
     "serve:proxy-www": "bunx local-cors-proxy --proxyUrl https://www.sec.gov --port 8011",
     "serve:proxy-data": "bunx local-cors-proxy --proxyUrl https://data.sec.gov --port 8012",
     "serve": "npm-run-all --parallel serve:*",
+    "test": "bun test",
     "build": "parcel build --no-cache --no-source-maps",
     "postbuild": "npm run ncp",
     "all:proxy": "bun ./scripts/sec-proxy.ts",
