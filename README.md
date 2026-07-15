@@ -74,7 +74,7 @@ MODE=data PORT=8012 bun ./scripts/fundamentals-local-proxy.ts &
 
 ### Вариант C — Cloudflare Worker (hosted GitHub Pages)
 
-См. `scripts/cloudflare-worker.js` — SEC-релей с CORS + User-Agent.  
+См. `scripts/fundamentals-cloudflare-proxy.js` — SEC-релей с CORS + User-Agent.  
 В UI (Settings ⚙) укажите base URL воркера; app также умеет unified base.
 
 ---
@@ -115,7 +115,7 @@ fundamentals/
 │   └── main.tsx              # SPA (proxy probe + UI)
 ├── scripts/
 │   ├── fundamentals-local-proxy.ts          # Bun SEC proxy (runtime-compatible)
-│   ├── cloudflare-worker.js  # hosted SEC proxy
+│   ├── fundamentals-cloudflare-proxy.js  # hosted SEC proxy
 │   └── fundamentals-data.py         # pre-fetch company_tickers
 ├── data/
 │   ├── company_tickers.json  # static cache for GitHub Pages

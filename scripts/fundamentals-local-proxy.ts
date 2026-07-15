@@ -29,7 +29,7 @@
  *   http://localhost:8012/api/xbrl/companyfacts/CIK....json
  *   http://localhost:8012/files/company_tickers.json
  *
- * DEPLOY: same logic can be ported to Cloudflare Worker (scripts/cloudflare-worker.js).
+ * DEPLOY: same logic can be ported to Cloudflare Worker (scripts/fundamentals-cloudflare-proxy.js).
  * =============================================================================
  */
 
