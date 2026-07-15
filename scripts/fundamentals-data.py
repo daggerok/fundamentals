@@ -11,10 +11,10 @@
 #                                 real content changes)
 #
 # RUN:
-#   uv run python scripts/fetch_data.py
-#   MAX_FETCHES=100 uv run python scripts/fetch_data.py
-#   TICKERS="AAPL MSFT" uv run python scripts/fetch_data.py   # explicit only
-#   UNIVERSE_SIZE=500 SKIP_FRESH_HOURS=0 MAX_FETCHES=50 uv run python scripts/fetch_data.py
+#   uv run python scripts/fundamentals-data.py
+#   MAX_FETCHES=100 uv run python scripts/fundamentals-data.py
+#   TICKERS="AAPL MSFT" uv run python scripts/fundamentals-data.py   # explicit only
+#   UNIVERSE_SIZE=500 SKIP_FRESH_HOURS=0 MAX_FETCHES=50 uv run python scripts/fundamentals-data.py
 #
 # QUEUE (when TICKERS not set) — options-desk style:
 #   1) MISSING symbols from company_tickers (coverage-first)
@@ -109,7 +109,7 @@ def _get_json(session, url: str) -> dict:
             if r.status_code == 403:
                 raise RuntimeError(
                     "SEC 403 Forbidden — descriptive User-Agent with contact email required.\n"
-                    f'  SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fetch_data.py\n'
+                    f'  SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fundamentals-data.py\n'
                     f"Current UA: {UA!r}"
                 )
             if r.status_code == 404:
@@ -363,7 +363,7 @@ def main() -> int:
     try:
         import requests  # noqa: F401
     except ImportError:
-        _log("ERROR: requests required — uv run python scripts/fetch_data.py")
+        _log("ERROR: requests required — uv run python scripts/fundamentals-data.py")
         return 1
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)

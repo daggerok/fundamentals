@@ -13,15 +13,15 @@ describe('proxy guidance', () => {
   test('uses the single supported command everywhere in the UI', () => {
     expect(main).toContain("const PROXY_COMMAND = 'bun install -E && bun serve:proxy'");
     expect(main).not.toContain('bunx local-cors-proxy');
-    expect(main).not.toContain('bun ./scripts/sec-proxy.ts && bun run serve:app');
+    expect(main).not.toContain('bun ./scripts/fundamentals-local-proxy.ts && bun run serve:app');
     expect(main).not.toContain('bun start  # dual');
   });
 
   test('starts both User-Agent-aware Bun relays without recursive serve scripts', () => {
     expect(pkg.scripts.serve).toBe('npm-run-all --parallel serve:app serve:proxy');
     expect(pkg.scripts['serve:proxy']).toBe('npm-run-all --parallel serve:proxy:*');
-    expect(pkg.scripts['serve:proxy:www']).toContain('MODE=www PORT=8011 bun ./scripts/sec-proxy.ts');
-    expect(pkg.scripts['serve:proxy:data']).toContain('MODE=data PORT=8012 bun ./scripts/sec-proxy.ts');
+    expect(pkg.scripts['serve:proxy:www']).toContain('MODE=www PORT=8011 bun ./scripts/fundamentals-local-proxy.ts');
+    expect(pkg.scripts['serve:proxy:data']).toContain('MODE=data PORT=8012 bun ./scripts/fundamentals-local-proxy.ts');
   });
 });
 
