@@ -133,6 +133,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.search': 'Search ticker',
     'tip.load': 'Load company data',
     'tip.proxy': 'Proxy status (www / data)',
+    'proxy.indicatorsDisabled': 'disabled in CACHE mode',
     'tip.proxyToggle': 'Open debug panel',
     'settings.title': 'Settings',
     'settings.display': 'Display',
@@ -256,6 +257,7 @@ const translations: Record<Language, Record<string, string>> = {
     'tip.search': 'Поиск тикера',
     'tip.load': 'Загрузить данные компании',
     'tip.proxy': 'Статус прокси (www / data)',
+    'proxy.indicatorsDisabled': 'отключены в режиме CACHE',
     'tip.proxyToggle': 'Открыть панель отладки',
     'settings.title': 'Настройки',
     'settings.display': 'Отображение',
@@ -1536,6 +1538,12 @@ function App() {
   const sugH2 = dark ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50';
   const dotOn = dark ? a.dotOnDark : a.dotOnLight;
   const dotOff = dark ? 'bg-slate-600' : 'bg-slate-300';
+  /** Proxy health is only meaningful in LIVE mode; CACHE mutes the indicators. */
+  const proxyLive = dataSource === 'live';
+  const proxyStatusCls = (ok: boolean) =>
+    !proxyLive ? (dark ? 'text-slate-500' : 'text-slate-400') : ok ? a.statusOk : 'text-red-500';
+  const proxyStatusLabel = (ok: boolean) =>
+    !proxyLive ? '● n/a' : ok ? '● online' : '● offline';
 
   const tblFs = `${Math.round(14 * scale)}px`;
   const tblHFs = `${Math.round(11 * scale)}px`;
@@ -1688,8 +1696,8 @@ function App() {
                         <div className="px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-xs ${mt}`}>www.sec.gov</span>
-                            <span className={`text-xs font-mono ${wwwOk ? a.statusOk : 'text-red-500'}`}>
-                              {wwwOk ? '● online' : '● offline'}
+                            <span className={`text-xs font-mono ${proxyStatusCls(wwwOk)}`}>
+                              {proxyStatusLabel(wwwOk)}
                             </span>
                           </div>
                           <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
@@ -1699,8 +1707,8 @@ function App() {
                         <div className="px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-xs ${mt}`}>data.sec.gov</span>
-                            <span className={`text-xs font-mono ${dataOk ? a.statusOk : 'text-red-500'}`}>
-                              {dataOk ? '● online' : '● offline'}
+                            <span className={`text-xs font-mono ${proxyStatusCls(dataOk)}`}>
+                              {proxyStatusLabel(dataOk)}
                             </span>
                           </div>
                           <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
@@ -1743,16 +1751,35 @@ function App() {
               )}
             </div>
 
-            {/* 2. Proxy online indicators */}
+            {/* 2. Proxy online indicators — LIVE: green/red health; CACHE: muted/disabled */}
             <div
               className="flex gap-1.5 flex-shrink-0"
-              title={t('tip.proxy', lang)}
+              title={
+                dataSource === 'cache'
+                  ? `${t('tip.proxy', lang)} (${t('source.cache', lang)} — ${t('proxy.indicatorsDisabled', lang)})`
+                  : t('tip.proxy', lang)
+              }
               aria-label={t('tip.proxy', lang)}
+              data-proxy-indicators={dataSource === 'cache' ? 'disabled' : 'live'}
             >
-              <div className={`h-2.5 w-2.5 rounded-full ${wwwOk ? dotOn : 'bg-red-500'}`} />
               <div
                 className={`h-2.5 w-2.5 rounded-full ${
-                  dataOk ? dotOn : tkL || loading ? 'bg-yellow-400 animate-pulse' : dotOff
+                  dataSource === 'cache'
+                    ? 'bg-slate-400/50 dark:bg-slate-600/50'
+                    : wwwOk
+                      ? dotOn
+                      : 'bg-red-500'
+                }`}
+              />
+              <div
+                className={`h-2.5 w-2.5 rounded-full ${
+                  dataSource === 'cache'
+                    ? 'bg-slate-400/50 dark:bg-slate-600/50'
+                    : dataOk
+                      ? dotOn
+                      : tkL || loading
+                        ? 'bg-yellow-400 animate-pulse'
+                        : 'bg-red-500'
                 }`}
               />
             </div>
@@ -2083,8 +2110,8 @@ function App() {
                       <label className={`text-xs ${t2}`} htmlFor="proxy-www-url">
                         www
                       </label>
-                      <span className={`text-xs font-mono ${wwwOk ? a.statusOk : 'text-red-500'}`}>
-                        {wwwOk ? '● online' : '● offline'}
+                      <span className={`text-xs font-mono ${proxyStatusCls(wwwOk)}`}>
+                        {proxyStatusLabel(wwwOk)}
                       </span>
                     </div>
                     <input
@@ -2101,8 +2128,8 @@ function App() {
                       <label className={`text-xs ${t2}`} htmlFor="proxy-data-url">
                         data
                       </label>
-                      <span className={`text-xs font-mono ${dataOk ? a.statusOk : 'text-red-500'}`}>
-                        {dataOk ? '● online' : '● offline'}
+                      <span className={`text-xs font-mono ${proxyStatusCls(dataOk)}`}>
+                        {proxyStatusLabel(dataOk)}
                       </span>
                     </div>
                     <input
