@@ -43,7 +43,7 @@ jobs:
           python-version: "3.13"
 
       - name: Prefetch SEC static cache (coverage-first)
-        run: uv run python scripts/fetch_data.py
+        run: TICKERS=$(cat data/All.txt) uv run python scripts/fetch_data.py
 
       - name: Commit refreshed data
         run: |
