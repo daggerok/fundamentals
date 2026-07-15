@@ -1,58 +1,58 @@
-# Fundamentals — SEC static cache (options-desk coverage-first)
-# uv run scripts/fetch_data.py → data/company_tickers.json + data/{TICKER}.json + index.json
-name: Update SEC data
-
-on:
-  schedule:
-    # Every day (0-6, Sun-Sat), staggered six times per hour (UTC).
-    - cron: "0 0-3 * * 0-6"
-    - cron: "1 4-7 * * 0-6"
-    - cron: "2 8-11 * * 0-6"
-    - cron: "3 12-15 * * 0-6"
-    - cron: "5 16-19 * * 0-6"
-    - cron: "8 20-23 * * 0-6"
-    - cron: "13 0-23 * * 0-6"
-    - cron: "21 0-23 * * 0-6"
-    - cron: "34 0-23 * * 0-6"
-    - cron: "45 0-23 * * 0-6"
-    - cron: "55 0-23 * * 0-6"
-  workflow_dispatch: {}
-
-permissions:
-  contents: write
-
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    env:
-      PYTHONUNBUFFERED: "1"
-      MAX_FETCHES: "500"
-      MAX_RETRIES: "2"
-      REQUEST_SLEEP: "0.5"
-      SKIP_FRESH_HOURS: "24"
-      # UNIVERSE_SIZE: "0"   # 0 = all company_tickers; set e.g. 500 to limit
-      # TICKERS: "AAPL MSFT" # optional explicit list
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          python-version: "3.13"
-
-      - name: Prefetch SEC static cache (coverage-first)
-        run: TICKERS=$(cat data/All.txt) uv run python scripts/fetch_data.py
-
-      - name: Commit refreshed data
-        run: |
-          git config user.name  "Maksim Kostromin"
-          git config user.email "daggerok@gmail.com"
-          git add data/ || true
-          if git diff --staged --quiet; then
-            echo "No data changes — nothing to commit."
-          else
-            git commit -m "chore(data): refresh SEC static cache [skip ci]"
-            git push || echo "Push failed (may be up-to-date or race condition)"
-          fi
+# # Fundamentals — SEC static cache (options-desk coverage-first)
+# # uv run scripts/fetch_data.py → data/company_tickers.json + data/{TICKER}.json + index.json
+# name: Update SEC data
+#
+# on:
+#   schedule:
+#     # Every day (0-6, Sun-Sat), staggered six times per hour (UTC).
+#     - cron: "0 0-3 * * 0-6"
+#     - cron: "1 4-7 * * 0-6"
+#     - cron: "2 8-11 * * 0-6"
+#     - cron: "3 12-15 * * 0-6"
+#     - cron: "5 16-19 * * 0-6"
+#     - cron: "8 20-23 * * 0-6"
+#     - cron: "13 0-23 * * 0-6"
+#     - cron: "21 0-23 * * 0-6"
+#     - cron: "34 0-23 * * 0-6"
+#     - cron: "45 0-23 * * 0-6"
+#     - cron: "55 0-23 * * 0-6"
+#   workflow_dispatch: {}
+#
+# permissions:
+#   contents: write
+#
+# jobs:
+#   update:
+#     runs-on: ubuntu-latest
+#     env:
+#       PYTHONUNBUFFERED: "1"
+#       MAX_FETCHES: "500"
+#       MAX_RETRIES: "2"
+#       REQUEST_SLEEP: "0.5"
+#       SKIP_FRESH_HOURS: "24"
+#       # UNIVERSE_SIZE: "0"   # 0 = all company_tickers; set e.g. 500 to limit
+#       # TICKERS: "AAPL MSFT" # optional explicit list
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v7
+#
+#       - name: Set up uv
+#         uses: astral-sh/setup-uv@v6
+#         with:
+#           enable-cache: true
+#           python-version: "3.13"
+#
+#       - name: Prefetch SEC static cache (coverage-first)
+#         run: TICKERS=$(cat data/All.txt) uv run python scripts/fetch_data.py
+#
+#       - name: Commit refreshed data
+#         run: |
+#           git config user.name  "Maksim Kostromin"
+#           git config user.email "daggerok@gmail.com"
+#           git add data/ || true
+#           if git diff --staged --quiet; then
+#             echo "No data changes — nothing to commit."
+#           else
+#             git commit -m "chore(data): refresh SEC static cache [skip ci]"
+#             git push || echo "Push failed (may be up-to-date or race condition)"
+#           fi
