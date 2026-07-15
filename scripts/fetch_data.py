@@ -5,7 +5,10 @@
 # Same-origin files for GitHub Pages (copied to dist/data via ncp):
 #   data/company_tickers.json     SEC ticker map (search)
 #   data/{TICKER}.json            companyfacts for CACHE mode
-#   data/index.json               manifest: files, count, generated, names
+#   data/index.json               manifest: files (ticker list), count, names
+#                                 (no per-ticker timestamps / no `generated` —
+#                                 freshness uses filesystem mtime; git only sees
+#                                 real content changes)
 #
 # RUN:
 #   uv run python scripts/fetch_data.py
@@ -276,38 +279,73 @@ def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
     return path
 
 
-def rebuild_index(names: dict[str, str]) -> None:
-    files: dict[str, str] = {}
+def _normalize_files_list(raw) -> list[str]:
+    """Accept legacy {TICKER: updatedISO} maps or plain ticker lists."""
+    if isinstance(raw, dict):
+        return sorted(str(k) for k in raw.keys() if k and k != "company_tickers.json")
+    if isinstance(raw, list):
+        return sorted({str(x) for x in raw if x and str(x) != "company_tickers.json"})
+    return []
+
+
+def rebuild_index(names: dict[str, str]) -> bool:
+    """Rewrite data/index.json only when the ticker set / names / skiplist change.
+
+    Shape (no timestamps): { files: [TICKER, ...], count, names, no_options? }.
+    Freshness for the fetcher uses filesystem mtime (see is_fresh / file_mtime),
+    so we deliberately do NOT store per-ticker `updated` or a global `generated`
+    stamp — those only churned git commits when no data content changed.
+    Returns True if the file was written.
+    """
+    tickers: list[str] = []
     for p in sorted(DATA_DIR.glob("*.json")):
         if p.name in ("index.json", "company_tickers.json"):
             continue
+        tickers.append(p.stem)
         try:
             doc = json.loads(p.read_text(encoding="utf-8"))
-            files[p.stem] = doc.get("updated") or _now_iso()
             if doc.get("title"):
                 names[p.stem] = doc["title"]
         except Exception:
-            files[p.stem] = _now_iso()
-    if TICKERS_PATH.exists():
-        files["company_tickers.json"] = _now_iso()
+            pass
+
+    prev: dict = {}
     prev_no_options: dict = {}
     if INDEX_PATH.exists():
         try:
             prev = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+            if not isinstance(prev, dict):
+                prev = {}
             prev_no_options = prev.get("no_options") or {}
             for k, v in (prev.get("names") or {}).items():
                 names.setdefault(k, v)
         except Exception:
-            pass
+            prev = {}
+
+    files = sorted(tickers)
+    names_sorted = dict(sorted(names.items()))
     index = {
-        "files": dict(sorted(files.items())),
-        "count": len([k for k in files if k != "company_tickers.json"]),
-        "generated": _now_iso(),
-        "names": dict(sorted(names.items())),
+        "files": files,
+        "count": len(files),
+        "names": names_sorted,
         "no_options": prev_no_options,
     }
+
+    prev_normalized = {
+        "files": _normalize_files_list(prev.get("files")),
+        "count": len(_normalize_files_list(prev.get("files"))),
+        "names": dict(sorted((prev.get("names") or {}).items())) if isinstance(prev.get("names"), dict) else {},
+        "no_options": prev_no_options if isinstance(prev_no_options, dict) else {},
+    }
+    # Also rewrite once when migrating off legacy timestamp fields.
+    legacy = "generated" in prev or isinstance(prev.get("files"), dict)
+    if prev_normalized == index and not legacy:
+        _log(f"index: unchanged ({len(files)} ticker caches) — skip rewrite")
+        return False
+
     INDEX_PATH.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
     _log(f"index: wrote {INDEX_PATH} ({index['count']} ticker caches)")
+    return True
 
 
 def resolve_meta(tmap: dict[str, dict], sym: str) -> tuple[str, dict] | None:
