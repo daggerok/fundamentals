@@ -3,9 +3,9 @@
 # Fundamentals — build-time SEC static cache (options-desk coverage-first)
 # -----------------------------------------------------------------------------
 # Same-origin files for GitHub Pages (copied to dist/data via ncp):
-#   data/company_tickers.json     SEC ticker map (search)
-#   data/{TICKER}.json            companyfacts for CACHE mode
-#   data/index.json               manifest: files (ticker list), count, names
+#   data/fundamentals/company_tickers.json     SEC ticker map (search)
+#   data/fundamentals/{TICKER}.json            companyfacts for CACHE mode
+#   data/fundamentals/index.json               manifest: files (ticker list), count, names
 #                                 (no per-ticker timestamps / no `generated` —
 #                                 freshness uses filesystem mtime; git only sees
 #                                 real content changes)
@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
+DATA_DIR = ROOT / "data" / "fundamentals"
 INDEX_PATH = DATA_DIR / "index.json"
 TICKERS_PATH = DATA_DIR / "company_tickers.json"
 
@@ -289,7 +289,7 @@ def _normalize_files_list(raw) -> list[str]:
 
 
 def rebuild_index(names: dict[str, str]) -> bool:
-    """Rewrite data/index.json only when the ticker set / names / skiplist change.
+    """Rewrite data/fundamentals/index.json only when the ticker set / names / skiplist change.
 
     Shape (no timestamps): { files: [TICKER, ...], count, names, no_options? }.
     Freshness for the fetcher uses filesystem mtime (see is_fresh / file_mtime),

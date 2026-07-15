@@ -23,7 +23,7 @@ import {
 type Language = 'en' | 'ru';
 type Mode = 'Y' | 'Q' | 'I';
 type View = 'T' | 'C';
-/** CACHE = same-origin ./data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
+/** CACHE = same-origin ./data/fundamentals/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
 type DataSource = 'cache' | 'live';
 
 /**
@@ -151,7 +151,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.preferUsd.hint': 'Use SEC-provided USD for each metric when available; otherwise use the issuer currency. No FX conversion.',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin ./data/{TICKER}.json (pre-fetched for GitHub Pages)',
+    'source.cache.hint': 'Same-origin ./data/fundamentals/{TICKER}.json (pre-fetched for GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR via local proxy',
     'tip.source': 'CACHE (static) / LIVE (proxy)',
     'settings.scale': 'Text scale',
@@ -274,7 +274,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.preferUsd.hint': 'Использовать предоставленные SEC значения в USD для каждой метрики, когда они доступны; иначе использовать валюту эмитента. Без FX-конвертации.',
     'source.cache': 'CACHE',
     'source.live': 'LIVE',
-    'source.cache.hint': 'Same-origin ./data/{TICKER}.json (префетч для GitHub Pages)',
+    'source.cache.hint': 'Same-origin ./data/fundamentals/{TICKER}.json (префетч для GitHub Pages)',
     'source.live.hint': 'Live SEC EDGAR через локальный прокси',
     'tip.source': 'CACHE (статика) / LIVE (прокси)',
     'settings.scale': 'Масштаб текста',
@@ -1372,7 +1372,7 @@ function App() {
         };
       }
       if (!co) {
-        // CACHE may still have ./data/{TICKER}.json even if ticker map is stubby
+        // CACHE may still have ./data/fundamentals/{TICKER}.json even if ticker map is stubby
         if (dataSource === 'cache') {
           const cachedFile = await loadStaticFacts(sym);
           if (cachedFile) {
@@ -1385,7 +1385,7 @@ function App() {
             setReporting(processed.reporting);
             sc({ facts: cachedFile.facts, company: cachedFile.company });
             log(`${sym} → CIK ${cachedFile.company.cik}`);
-            log(`✅ CACHE ./data/${sym}.json`);
+            log(`✅ CACHE ./data/fundamentals/${sym}.json`);
             log('✅ Done');
             return;
           }
@@ -1395,7 +1395,7 @@ function App() {
       const cik = String(co.cik_str ?? co.cik).padStart(10, '0');
       log(`${sym} → CIK ${cik}`);
 
-      // --- CACHE mode: same-origin ./data/{TICKER}.json (options-desk pattern) ---
+      // --- CACHE mode: same-origin ./data/fundamentals/{TICKER}.json (options-desk pattern) ---
       if (dataSource === 'cache') {
         const cachedFile = await loadStaticFacts(sym);
         if (cachedFile) {
@@ -1407,12 +1407,12 @@ function App() {
           setPd(processed);
           setReporting(processed.reporting);
           sc({ facts: cachedFile.facts, company: cachedFile.company });
-          log(`✅ CACHE ./data/${sym}.json`);
+          log(`✅ CACHE ./data/fundamentals/${sym}.json`);
           log('✅ Done');
           return;
         }
         // fall through to LIVE if static miss (and log)
-        log(`CACHE miss ./data/${sym}.json — trying LIVE proxy`);
+        log(`CACHE miss ./data/fundamentals/${sym}.json — trying LIVE proxy`);
       }
 
       // --- LIVE mode: SEC via proxy ---
@@ -1717,7 +1717,7 @@ function App() {
                           </span>
                         </div>
                         <div className={`mt-1 text-[10px] font-mono break-all ${t2}`}>
-                          ./data/{company?.ticker || '{TICKER}'}.json
+                          ./data/fundamentals/{company?.ticker || '{TICKER}'}.json
                         </div>
                       </div>
                     )}

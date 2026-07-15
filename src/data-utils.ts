@@ -27,7 +27,7 @@ export type CurrencyPreference = {
 
 /**
  * Return the taxonomy map from either a raw SEC companyfacts response or the
- * repository's data/{TICKER}.json cache wrapper. SEC companyfacts responses do
+ * repository's data/fundamentals/{TICKER}.json cache wrapper. SEC companyfacts responses do
  * not include a ticker/symbol; callers attach that metadata from the ticker map.
  */
 export function normalizeFacts(raw: any): any {
@@ -58,10 +58,10 @@ export function hasUsableFacts(raw: any): boolean {
   );
 }
 
-/** Resolve ./data next to the deployed app, including GitHub Pages subpaths. */
+/** Resolve ./data/fundamentals next to the deployed app, including GitHub Pages subpaths. */
 export function staticDataUrl(fileName: string, baseUri: string): string {
   const appBase = new URL('.', baseUri);
-  return new URL(`./data/${encodeURIComponent(fileName)}`, appBase).toString();
+  return new URL(`./data/fundamentals/${encodeURIComponent(fileName)}`, appBase).toString();
 }
 
 function baseForm(form: unknown): string {

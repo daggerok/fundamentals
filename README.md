@@ -86,7 +86,7 @@ bun run build
 bun run build-github-pages   # public-url=/fundamentals/
 ```
 
-На GitHub Pages тикеры берутся из статического `data/company_tickers.json` (workflow `update-data.yml`). Company facts по-прежнему требуют прокси / Worker.
+На GitHub Pages тикеры берутся из статического `data/fundamentals/company_tickers.json` (workflow `update-data.yml`). Company facts по-прежнему требуют прокси / Worker.
 
 ---
 
@@ -172,14 +172,14 @@ SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fundamentals-da
 bun run data:fetch
 ```
 
-Writes `data/company_tickers.json` + `data/index.json`.  
+Writes `data/fundamentals/company_tickers.json` + `data/fundamentals/index.json`.  
 GitHub Action **Update SEC data** runs this on a schedule via `astral-sh/setup-uv`.
 
 ---
 
 ## Static CACHE (options-desk pattern)
 
-Pre-fetch SEC companyfacts into `data/{TICKER}.json`, then `postbuild` copies `data/` → `dist/data/` for GitHub Pages.
+Pre-fetch SEC companyfacts into `data/fundamentals/{TICKER}.json`, then `postbuild` copies `data/` → `dist/data/` for GitHub Pages.
 
 ```bash
 # coverage-first: download MISSING tickers from company_tickers.json (then refresh stale)
@@ -198,7 +198,7 @@ bun run build   # ncp → dist/data/
 
 
 In the app **Settings → Data source**:
-- **CACHE** (default on GitHub Pages): load app-relative `./data/{TICKER}.json`. The browser resolves this to `/fundamentals/data/TSM.json` on this project's Pages deployment and `/data/TSM.json` on localhost.
+- **CACHE** (default on GitHub Pages): load app-relative `./data/fundamentals/{TICKER}.json`. The browser resolves this to `/fundamentals/data/TSM.json` on this project's Pages deployment and `/data/TSM.json` on localhost.
 - **LIVE** (default on localhost): resolve ticker → CIK with `company_tickers.json`, then fetch SEC companyfacts via the data proxy.
 
 SEC companyfacts payloads are keyed by CIK and do **not** guarantee a `symbol` field. The app keeps the searched ticker from `company_tickers.json`; the pre-fetch script adds `symbol` and `ticker` only to the local cache wrapper.
