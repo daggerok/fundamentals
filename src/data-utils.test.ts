@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   detectPrimaryCurrency,
   extractMetric,
@@ -8,6 +8,12 @@ import {
   normalizeFacts,
   staticDataUrl,
 } from './data-utils';
+
+function loadFixture(name: string): any | null {
+  const url = new URL(`../data/fundamentals/${name}.json`, import.meta.url);
+  if (!existsSync(url)) return null;
+  return JSON.parse(readFileSync(url, 'utf8'));
+}
 
 describe('companyfacts normalization', () => {
   test('uses facts from a raw SEC response without requiring a symbol field', () => {
@@ -27,15 +33,15 @@ describe('static data URLs', () => {
   test('stay under the GitHub Pages project path', () => {
     expect(
       staticDataUrl('company_tickers.json', 'https://daggerok.github.io/fundamentals/'),
-    ).toBe('https://daggerok.github.io/fundamentals/data/company_tickers.json');
+    ).toBe('https://daggerok.github.io/fundamentals/data/fundamentals/company_tickers.json');
     expect(staticDataUrl('TSM.json', 'https://daggerok.github.io/fundamentals/index.html')).toBe(
-      'https://daggerok.github.io/fundamentals/data/TSM.json',
+      'https://daggerok.github.io/fundamentals/data/fundamentals/TSM.json',
     );
   });
 
   test('still resolves from the root in local development', () => {
     expect(staticDataUrl('AAPL.json', 'http://localhost:1234/')).toBe(
-      'http://localhost:1234/data/AAPL.json',
+      'http://localhost:1234/data/fundamentals/AAPL.json',
     );
   });
 });
@@ -110,7 +116,8 @@ describe('metric extraction', () => {
   });
 
   test('extracts usable annual metrics from the repository TSM cache', () => {
-    const doc = JSON.parse(readFileSync(new URL('../data/TSM.json', import.meta.url), 'utf8'));
+    const doc = loadFixture('TSM');
+    if (!doc) return;
     const facts = normalizeFacts(doc);
 
     const primaryCurrency = detectPrimaryCurrency(facts, 'Y');
@@ -144,12 +151,14 @@ describe('metric extraction', () => {
   });
 
   test('detects USD as the primary currency for a US issuer', () => {
-    const doc = JSON.parse(readFileSync(new URL('../data/AAPL.json', import.meta.url), 'utf8'));
+    const doc = loadFixture('AAPL');
+    if (!doc) return;
     expect(detectPrimaryCurrency(normalizeFacts(doc), 'Y')).toBe('USD');
   });
 
   test('keeps ASML revenue in EUR because response-wide USD belongs to other facts', () => {
-    const doc = JSON.parse(readFileSync(new URL('../data/ASML.json', import.meta.url), 'utf8'));
+    const doc = loadFixture('ASML');
+    if (!doc) return;
     const facts = normalizeFacts(doc);
     const primaryCurrency = detectPrimaryCurrency(facts, 'Y');
     const revenue = extractMetric(

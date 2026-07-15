@@ -1,5 +1,5 @@
 # Fundamentals — SEC static cache (options-desk coverage-first)
-# uv run scripts/fundamentals-data.py → data/company_tickers.json + data/{TICKER}.json + index.json
+# uv run scripts/fundamentals-data.py → data/fundamentals/company_tickers.json + data/fundamentals/{TICKER}.json + index.json
 name: Update SEC data
 
 on:
