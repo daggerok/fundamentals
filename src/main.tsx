@@ -720,7 +720,8 @@ async function loadStaticFacts(sym: string): Promise<{
 }
 
 async function loadStaticManifest(): Promise<{
-  files: Record<string, string>;
+  /** Ticker symbols present in the static cache (list; legacy map keys also accepted). */
+  files: string[];
   names: Record<string, string>;
   count: number;
 } | null> {
@@ -730,10 +731,16 @@ async function loadStaticManifest(): Promise<{
     });
     if (!r.ok) return null;
     const doc = await r.json();
+    const rawFiles = doc?.files;
+    const files = Array.isArray(rawFiles)
+      ? rawFiles.map((x: unknown) => String(x)).filter(Boolean)
+      : rawFiles && typeof rawFiles === 'object'
+        ? Object.keys(rawFiles)
+        : [];
     return {
-      files: doc.files || {},
+      files,
       names: doc.names || {},
-      count: doc.count || 0,
+      count: typeof doc.count === 'number' ? doc.count : files.length,
     };
   } catch {
     return null;
