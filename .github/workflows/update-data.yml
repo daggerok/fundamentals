@@ -1,5 +1,5 @@
 # Fundamentals — SEC static cache (options-desk coverage-first)
-# uv run scripts/fetch_data.py → data/company_tickers.json + data/{TICKER}.json + index.json
+# uv run scripts/fundamentals-data.py → data/company_tickers.json + data/{TICKER}.json + index.json
 name: Update SEC data
 
 on:
@@ -44,7 +44,7 @@ jobs:
           python-version: "3.13"
 
       - name: Prefetch SEC static cache (coverage-first)
-        run: TICKERS=$(cat data/All.txt) uv run python scripts/fetch_data.py
+        run: TICKERS=$(cat data/All.txt) uv run python scripts/fundamentals-data.py
 
       - name: Commit refreshed data
         run: |

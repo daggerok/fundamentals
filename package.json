@@ -11,12 +11,12 @@
     "serve": "npm-run-all --parallel serve:app serve:proxy",
     "serve:app": "parcel --no-cache --no-source-maps",
     "serve:proxy": "npm-run-all --parallel serve:proxy:*",
-    "serve:proxy:www": "MODE=www PORT=8011 bun ./scripts/sec-proxy.ts",
-    "serve:proxy:data": "MODE=data PORT=8012 bun ./scripts/sec-proxy.ts",
+    "serve:proxy:www": "MODE=www PORT=8011 bun ./scripts/fundamentals-local-proxy.ts",
+    "serve:proxy:data": "MODE=data PORT=8012 bun ./scripts/fundamentals-local-proxy.ts",
     "test": "bun test",
     "build": "parcel build --no-cache --no-source-maps",
     "postbuild": "npm run ncp",
-    "all:proxy": "bun ./scripts/sec-proxy.ts",
+    "all:proxy": "bun ./scripts/fundamentals-local-proxy.ts",
     "all:serve": "npm run serve:app",
     "all": "npm-run-all --parallel all:*",
     "start": "pm2 start 'npm run serve' --name fundamentals",
@@ -25,8 +25,8 @@
     "logs": "pm2 logs",
     "stop": "pm2 kill",
     "kill": "pm2 kill",
-    "data:fetch": "uv run python scripts/fetch_data.py",
-    "data:fetch:pip": "python scripts/fetch_data.py"
+    "data:fetch": "uv run python scripts/fundamentals-data.py",
+    "data:fetch:pip": "python scripts/fundamentals-data.py"
   },
   "keywords": [
     "sec",

@@ -19,7 +19,7 @@ jobs:
             ${{ runner.os }}-bun-
       - run: bun install -E
       - run: bun run test
-      - run: bun build ./scripts/sec-proxy.ts --outdir=/tmp/sec-proxy-check --target=bun
+      - run: bun build ./scripts/fundamentals-local-proxy.ts --outdir=/tmp/fundamentals-local-proxy-check --target=bun
       - run: bun run build
       - run: bun run build-github-pages
   npm-check-updates:

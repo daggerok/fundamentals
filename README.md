@@ -57,19 +57,19 @@ bun install -E && bun serve:proxy
 
 ```bash
 # Терминал 1
-bun ./scripts/sec-proxy.ts          # MODE=both, port 8012
+bun ./scripts/fundamentals-local-proxy.ts          # MODE=both, port 8012
 
 # Терминал 2
 bun run serve:app
 ```
 
-`scripts/sec-proxy.ts` принимает и runtime-пути (`/proxy/...`), и прямые (`/api/...`, `/files/...`), и выставляет обязательный `User-Agent` для SEC.
+`scripts/fundamentals-local-proxy.ts` принимает и runtime-пути (`/proxy/...`), и прямые (`/api/...`, `/files/...`), и выставляет обязательный `User-Agent` для SEC.
 
 Можно эмулировать два порта runtime:
 
 ```bash
-MODE=www  PORT=8011 bun ./scripts/sec-proxy.ts &
-MODE=data PORT=8012 bun ./scripts/sec-proxy.ts &
+MODE=www  PORT=8011 bun ./scripts/fundamentals-local-proxy.ts &
+MODE=data PORT=8012 bun ./scripts/fundamentals-local-proxy.ts &
 ```
 
 ### Вариант C — Cloudflare Worker (hosted GitHub Pages)
@@ -96,8 +96,8 @@ bun run build-github-pages   # public-url=/fundamentals/
 bun install -E
 bun serve:proxy            # оба Bun SEC-прокси (8011 + 8012)
 bun serve:app              # только Parcel
-bun ./scripts/sec-proxy.ts # unified Bun proxy
-bun run all                # sec-proxy.ts + Parcel
+bun ./scripts/fundamentals-local-proxy.ts # unified Bun proxy
+bun run all                # fundamentals-local-proxy.ts + Parcel
 bun start / bun ps / bun logs / bun restart / bun stop / bun kill
 bun run build
 bun run build-github-pages
@@ -114,9 +114,9 @@ fundamentals/
 │   ├── index.css
 │   └── main.tsx              # SPA (proxy probe + UI)
 ├── scripts/
-│   ├── sec-proxy.ts          # Bun SEC proxy (runtime-compatible)
+│   ├── fundamentals-local-proxy.ts          # Bun SEC proxy (runtime-compatible)
 │   ├── cloudflare-worker.js  # hosted SEC proxy
-│   └── fetch_data.py         # pre-fetch company_tickers
+│   └── fundamentals-data.py         # pre-fetch company_tickers
 ├── data/
 │   ├── company_tickers.json  # static cache for GitHub Pages
 │   └── index.json
@@ -159,13 +159,13 @@ Same pattern as [options-desk](https://github.com/daggerok/options-desk):
 
 ```bash
 # requires uv (https://docs.astral.sh/uv/)
-uv run python scripts/fetch_data.py
+uv run python scripts/fundamentals-data.py
 
 SEC blocks generic User-Agents (HTTP 403). The script defaults to a descriptive
 contact UA. Override if needed:
 
 ```bash
-SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fetch_data.py
+SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fundamentals-data.py
 ```
 
 # or:
@@ -183,13 +183,13 @@ Pre-fetch SEC companyfacts into `data/{TICKER}.json`, then `postbuild` copies `d
 
 ```bash
 # coverage-first: download MISSING tickers from company_tickers.json (then refresh stale)
-MAX_FETCHES=50 uv run python scripts/fetch_data.py
+MAX_FETCHES=50 uv run python scripts/fundamentals-data.py
 
 # or only specific symbols
-TICKERS="AAPL MSFT NVDA" uv run python scripts/fetch_data.py
+TICKERS="AAPL MSFT NVDA" uv run python scripts/fundamentals-data.py
 
 # force re-fetch even if "fresh"
-SKIP_FRESH_HOURS=0 MAX_FETCHES=10 TICKERS="AAPL" uv run python scripts/fetch_data.py
+SKIP_FRESH_HOURS=0 MAX_FETCHES=10 TICKERS="AAPL" uv run python scripts/fundamentals-data.py
 
 bun run build   # ncp → dist/data/
 ```
