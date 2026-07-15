@@ -87,3 +87,18 @@ describe('SEC cache schedule', () => {
     expect(updateWorkflow).toContain('REQUEST_SLEEP: "0.5"');
   });
 });
+
+describe('color theme settings', () => {
+  test('exposes shared Emerald Ledger / Indigo Desk palettes with fundamentals default', () => {
+    expect(main).toContain("type ColorThemeId = 'fundamentals' | 'options-desk'");
+    expect(main).toContain("const DEFAULT_COLOR_THEME: ColorThemeId = 'fundamentals'");
+    expect(main).toContain("normalizeColorTheme(prefs.colorTheme)");
+    expect(main).toContain("t('settings.colorTheme', lang)");
+    expect(main).toContain("'colorTheme.fundamentals': 'Emerald Ledger'");
+    expect(main).toContain("'colorTheme.options-desk': 'Indigo Desk'");
+    expect(main).toContain('t(`colorTheme.${colorTheme}`, lang)');
+    expect(main).toContain("dataset.palette = colorTheme");
+    expect(main).toContain("ACCENT[colorTheme]");
+    expect(css).toContain("data-palette='options-desk'");
+  });
+});

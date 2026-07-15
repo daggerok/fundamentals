@@ -26,6 +26,84 @@ type View = 'T' | 'C';
 /** CACHE = same-origin ./data/{TICKER}.json (GitHub Pages); LIVE = SEC via proxy */
 type DataSource = 'cache' | 'live';
 
+/**
+ * Shared color palettes across daggerok apps (fundamentals + options-desk).
+ * Each product keeps its native default; the other palette is selectable so a
+ * future merge ships with both UIs already consistent.
+ *  - fundamentals → Emerald Ledger (emerald accents, slate-950 dark surface)
+ *  - options-desk → Indigo Desk     (indigo accents, slate-900 dark surface)
+ */
+type ColorThemeId = 'fundamentals' | 'options-desk';
+const DEFAULT_COLOR_THEME: ColorThemeId = 'fundamentals';
+
+type AccentPalette = {
+  btn: string;
+  pillActive: string;
+  focusBorder: string;
+  accentInput: string;
+  textDark: string;
+  textLight: string;
+  textSoftDark: string;
+  textSoftLight: string;
+  chipActiveDark: string;
+  chipActiveLight: string;
+  monoBlockDark: string;
+  monoBlockLight: string;
+  statusOk: string;
+  dotOnDark: string;
+  dotOnLight: string;
+  sun: string;
+};
+
+const ACCENT: Record<ColorThemeId, AccentPalette> = {
+  fundamentals: {
+    btn: 'bg-emerald-500 hover:bg-emerald-400',
+    pillActive: 'bg-emerald-500 text-white shadow-sm',
+    focusBorder: 'focus:border-emerald-500',
+    accentInput: 'accent-emerald-500',
+    textDark: 'text-emerald-400',
+    textLight: 'text-emerald-700',
+    textSoftDark: 'text-emerald-300',
+    textSoftLight: 'text-emerald-700',
+    chipActiveDark: 'bg-slate-700 text-emerald-400',
+    chipActiveLight: 'bg-slate-200 text-emerald-700',
+    monoBlockDark: 'bg-slate-900 text-emerald-300',
+    monoBlockLight: 'bg-slate-50 text-emerald-700',
+    statusOk: 'text-emerald-500',
+    dotOnDark: 'bg-emerald-500',
+    dotOnLight: 'bg-emerald-600',
+    sun: 'text-yellow-400',
+  },
+  'options-desk': {
+    btn: 'bg-indigo-600 hover:bg-indigo-500',
+    pillActive: 'bg-indigo-600 text-white shadow-sm',
+    focusBorder: 'focus:border-indigo-500',
+    accentInput: 'accent-indigo-600',
+    textDark: 'text-indigo-400',
+    textLight: 'text-indigo-700',
+    textSoftDark: 'text-indigo-300',
+    textSoftLight: 'text-indigo-700',
+    chipActiveDark: 'bg-slate-700 text-indigo-400',
+    chipActiveLight: 'bg-slate-200 text-indigo-700',
+    monoBlockDark: 'bg-slate-900 text-indigo-300',
+    monoBlockLight: 'bg-slate-50 text-indigo-700',
+    statusOk: 'text-indigo-500',
+    dotOnDark: 'bg-indigo-500',
+    dotOnLight: 'bg-indigo-600',
+    sun: 'text-yellow-400',
+  },
+};
+
+/** Dark surface differs slightly between product palettes (merge-ready). */
+const SURFACE = {
+  fundamentals: { darkBg: '#020617', lightBg: '#f8fafc', darkFg: '#f1f5f9', lightFg: '#0f172a' },
+  'options-desk': { darkBg: '#0f172a', lightBg: '#f8fafc', darkFg: '#e2e8f0', lightFg: '#0f172a' },
+} as const;
+
+function normalizeColorTheme(v: unknown): ColorThemeId {
+  return v === 'options-desk' ? 'options-desk' : DEFAULT_COLOR_THEME;
+}
+
 const LS_P = 'sec-dash-prefs';
 const LS_C = 'sec-dash-cache';
 const LS_LANG = 'sec-lang';
@@ -61,6 +139,10 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.data': 'Data & proxy',
     'settings.debug': 'Debug',
     'settings.theme': 'Theme',
+    'settings.colorTheme': 'Color palette',
+    'settings.colorTheme.hint': 'Shared with Options Desk for a consistent merge-ready UI.',
+    'colorTheme.fundamentals': 'Emerald Ledger',
+    'colorTheme.options-desk': 'Indigo Desk',
     'settings.lang': 'Language',
     'settings.view': 'View',
     'settings.mode': 'Period',
@@ -180,6 +262,10 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.data': 'Данные и прокси',
     'settings.debug': 'Отладка',
     'settings.theme': 'Тема',
+    'settings.colorTheme': 'Цветовая палитра',
+    'settings.colorTheme.hint': 'Общая с Options Desk — единый UI при будущем слиянии.',
+    'colorTheme.fundamentals': 'Изумрудный Ledger',
+    'colorTheme.options-desk': 'Индиго Desk',
     'settings.lang': 'Язык',
     'settings.view': 'Вид',
     'settings.mode': 'Период',
@@ -1001,12 +1087,14 @@ const Pill = ({
   onChange,
   dark,
   title,
+  accent,
 }: {
   value: string;
   options: PillOption[];
   onChange: (k: string) => void;
   dark: boolean;
   title?: string;
+  accent: AccentPalette;
 }) => (
   <div
     title={title}
@@ -1022,7 +1110,7 @@ const Pill = ({
           onClick={() => onChange(k)}
           className={`px-2.5 py-1 rounded-md text-sm font-bold leading-none transition-all ${
             value === k
-              ? 'bg-emerald-500 text-white shadow-sm'
+              ? accent.pillActive
               : dark
                 ? 'text-slate-400 hover:text-slate-200'
                 : 'text-slate-500 hover:text-slate-700'
@@ -1071,6 +1159,9 @@ function App() {
   const [preferUsd, setPreferUsd] = useState<boolean>(() => prefs.preferUsd === true);
   const [view, setView] = useState<View>(prefs.view || 'C');
   const [dark, setDark] = useState(prefs.dark !== false);
+  const [colorTheme, setColorTheme] = useState<ColorThemeId>(() =>
+    normalizeColorTheme(prefs.colorTheme),
+  );
   const [factsCache, setFactsCache] = useState<any>(cached?.facts || null);
   const [pd, setPd] = useState<any>(null);
   const [reporting, setReporting] = useState<ReportingInfo | null>(null);
@@ -1108,8 +1199,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    sp({ ticker, mode, view, dark, scaleSlider, dataSource, preferUsd });
-  }, [ticker, mode, view, dark, scaleSlider, dataSource, preferUsd]);
+    sp({ ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd });
+  }, [ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd]);
 
   // Keep last loaded companyfacts in localStorage across reloads/close
   useEffect(() => {
@@ -1119,7 +1210,7 @@ function App() {
   useEffect(() => {
     const onLeave = () => {
       if (company && factsCache) sc({ facts: factsCache, company });
-      sp({ ticker, mode, view, dark, scaleSlider, dataSource, preferUsd });
+      sp({ ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd });
     };
     window.addEventListener('beforeunload', onLeave);
     return () => window.removeEventListener('beforeunload', onLeave);
@@ -1138,12 +1229,14 @@ function App() {
   }, [dataProxyUrl]);
 
   useEffect(() => {
+    const surface = SURFACE[colorTheme];
     document.documentElement.classList.toggle('dark', dark);
-    document.documentElement.style.backgroundColor = dark ? '#020617' : '#f8fafc';
-    document.documentElement.style.color = dark ? '#f1f5f9' : '#0f172a';
-    document.body.style.backgroundColor = dark ? '#020617' : '#f8fafc';
-    document.body.style.color = dark ? '#f1f5f9' : '#0f172a';
-  }, [dark]);
+    document.documentElement.dataset.palette = colorTheme;
+    document.documentElement.style.backgroundColor = dark ? surface.darkBg : surface.lightBg;
+    document.documentElement.style.color = dark ? surface.darkFg : surface.lightFg;
+    document.body.style.backgroundColor = dark ? surface.darkBg : surface.lightBg;
+    document.body.style.color = dark ? surface.darkFg : surface.lightFg;
+  }, [dark, colorTheme]);
 
   useEffect(() => {
     if (!factsCache) return;
@@ -1408,14 +1501,22 @@ function App() {
     } else if (e.key === 'Escape') setShowSug(false);
   };
 
-  const bg = dark ? 'bg-slate-950/95 text-slate-100' : 'bg-white/95 text-slate-900';
+  const a = ACCENT[colorTheme];
+  const bg =
+    colorTheme === 'fundamentals'
+      ? dark
+        ? 'bg-slate-950/95 text-slate-100'
+        : 'bg-white/95 text-slate-900'
+      : dark
+        ? 'bg-slate-900/95 text-slate-100'
+        : 'bg-white/95 text-slate-900';
   const bdr = dark ? 'border-slate-800' : 'border-slate-200';
   const card = dark
     ? 'bg-slate-800 border-slate-600 text-slate-100'
     : 'bg-white border-slate-200 text-slate-900 shadow-sm';
   const inp = dark
-    ? 'bg-slate-800 border-slate-700 text-emerald-400'
-    : 'bg-slate-50 border-slate-300 text-emerald-700';
+    ? `bg-slate-800 border-slate-700 ${a.textDark}`
+    : `bg-slate-50 border-slate-300 ${a.textLight}`;
   const mt = dark ? 'text-slate-400' : 'text-slate-500';
   const t1 = dark ? 'text-slate-100' : 'text-slate-800';
   const t2 = dark ? 'text-slate-300' : 'text-slate-600';
@@ -1426,7 +1527,7 @@ function App() {
   const sugBg = dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200 shadow-lg';
   const sugH = dark ? 'bg-slate-700' : 'bg-slate-100';
   const sugH2 = dark ? 'hover:bg-slate-700/50' : 'hover:bg-slate-50';
-  const dotOn = dark ? 'bg-emerald-500' : 'bg-emerald-600';
+  const dotOn = dark ? a.dotOnDark : a.dotOnLight;
   const dotOff = dark ? 'bg-slate-600' : 'bg-slate-300';
 
   const tblFs = `${Math.round(14 * scale)}px`;
@@ -1458,8 +1559,8 @@ function App() {
                 className={`text-xs px-2 py-1.5 rounded-lg transition-colors ${
                   showDebug
                     ? dark
-                      ? 'bg-slate-700 text-emerald-400'
-                      : 'bg-slate-200 text-emerald-700'
+                      ? a.chipActiveDark
+                      : a.chipActiveLight
                     : dark
                       ? 'text-slate-600 hover:text-slate-400 hover:bg-slate-800'
                       : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
@@ -1482,7 +1583,7 @@ function App() {
                   <div className={`rounded-lg border ${bdr} divide-y ${bdr}`}>
                     <div className="flex items-start justify-between gap-3 px-3 py-2">
                       <span className={`text-xs ${mt}`}>{t('debug.status', lang)}</span>
-                      <span className={`text-xs font-mono text-right break-words ${error ? 'text-red-500' : loading || tkL ? 'text-amber-500' : 'text-emerald-500'}`}>
+                      <span className={`text-xs font-mono text-right break-words ${error ? 'text-red-500' : loading || tkL ? 'text-amber-500' : a.statusOk}`}>
                         {debugStatus}
                       </span>
                     </div>
@@ -1580,7 +1681,7 @@ function App() {
                         <div className="px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-xs ${mt}`}>www.sec.gov</span>
-                            <span className={`text-xs font-mono ${wwwOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                            <span className={`text-xs font-mono ${wwwOk ? a.statusOk : 'text-red-500'}`}>
                               {wwwOk ? '● online' : '● offline'}
                             </span>
                           </div>
@@ -1591,7 +1692,7 @@ function App() {
                         <div className="px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-xs ${mt}`}>data.sec.gov</span>
-                            <span className={`text-xs font-mono ${dataOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                            <span className={`text-xs font-mono ${dataOk ? a.statusOk : 'text-red-500'}`}>
                               {dataOk ? '● online' : '● offline'}
                             </span>
                           </div>
@@ -1604,7 +1705,7 @@ function App() {
                       <div className="px-3 py-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className={`text-xs ${mt}`}>Static cache</span>
-                          <span className={`text-xs font-mono ${dataOk ? 'text-emerald-500' : mt}`}>
+                          <span className={`text-xs font-mono ${dataOk ? a.statusOk : mt}`}>
                             {dataOk ? '● loaded' : '● waiting'}
                           </span>
                         </div>
@@ -1622,7 +1723,7 @@ function App() {
                     {logs.length ? (
                       <div className="space-y-1">
                         {logs.slice(-10).map((entry, index) => (
-                          <div key={`${index}-${entry}`} className={`text-[10px] font-mono whitespace-pre-wrap break-words ${entry.startsWith('❌') ? 'text-red-500' : entry.startsWith('✅') ? 'text-emerald-500' : t2}`}>
+                          <div key={`${index}-${entry}`} className={`text-[10px] font-mono whitespace-pre-wrap break-words ${entry.startsWith('❌') ? 'text-red-500' : entry.startsWith('✅') ? a.statusOk : t2}`}>
                             {entry}
                           </div>
                         ))}
@@ -1665,7 +1766,7 @@ function App() {
                 placeholder={t('search.placeholder', lang)}
                 title={t('tip.search', lang)}
                 aria-label={t('tip.search', lang)}
-                className={`w-full ${inp} border rounded-lg px-3 py-2 font-mono font-bold text-sm focus:outline-none focus:border-emerald-500 transition-colors uppercase`}
+                className={`w-full ${inp} border rounded-lg px-3 py-2 font-mono font-bold text-sm focus:outline-none ${a.focusBorder} transition-colors uppercase`}
                 disabled={!tickers}
               />
               {showSug && sug.length > 0 && (
@@ -1685,7 +1786,7 @@ function App() {
                     >
                       <span
                         className={`font-mono font-bold text-sm w-14 flex-shrink-0 ${
-                          dark ? 'text-emerald-400' : 'text-emerald-700'
+                          dark ? a.textDark : a.textLight
                         }`}
                       >
                         {s.ticker}
@@ -1709,7 +1810,7 @@ function App() {
               disabled={loading || !tickers}
               title={t('tip.load', lang)}
               aria-label={t('tip.load', lang)}
-              className="flex-shrink-0 flex items-center bg-emerald-500 hover:bg-emerald-400 text-white font-bold px-3 sm:px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40"
+              className={`flex-shrink-0 flex items-center ${a.btn} text-white font-bold px-3 sm:px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-40`}
             >
               {loading ? (
                 <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
@@ -1743,6 +1844,7 @@ function App() {
                 ]}
                 onChange={(k) => setMode(k as Mode)}
                 dark={dark}
+                accent={a}
                 title={t('tip.mode', lang)}
               />
             </div>
@@ -1757,6 +1859,7 @@ function App() {
                 ]}
                 onChange={(k) => setView(k as View)}
                 dark={dark}
+                accent={a}
                 title={t('tip.view', lang)}
               />
             </div>
@@ -1771,6 +1874,7 @@ function App() {
                 ]}
                 onChange={(k) => setDataSource(k as DataSource)}
                 dark={dark}
+                accent={a}
                 title={`${t('tip.source', lang)}: ${t(`source.${dataSource}.hint`, lang)}`}
               />
             </div>
@@ -1782,7 +1886,7 @@ function App() {
               title={t('tip.theme', lang)}
               aria-label={t('tip.theme', lang)}
               className={`flex-shrink-0 text-base leading-none px-2 py-1.5 rounded-lg transition-colors ${
-                dark ? 'text-yellow-400 hover:bg-slate-800' : 'text-slate-500 hover:bg-slate-100'
+                dark ? `${a.sun} hover:bg-slate-800` : 'text-slate-500 hover:bg-slate-100'
               }`}
             >
               {dark ? '☀️' : '🌙'}
@@ -1798,6 +1902,7 @@ function App() {
                 ]}
                 onChange={(k) => setLang(k as Language)}
                 dark={dark}
+                accent={a}
                 title={t('tip.lang', lang)}
               />
             </div>
@@ -1813,8 +1918,8 @@ function App() {
                 className={`flex-shrink-0 text-base leading-none px-2 py-1.5 rounded-lg transition-colors ${
                   showSettings
                     ? dark
-                      ? 'bg-slate-700 text-emerald-400'
-                      : 'bg-slate-200 text-emerald-700'
+                      ? a.chipActiveDark
+                      : a.chipActiveLight
                     : dark
                       ? 'text-slate-300 hover:bg-slate-800'
                       : 'text-slate-600 hover:bg-slate-100'
@@ -1841,8 +1946,28 @@ function App() {
                       ]}
                       onChange={(k) => setDark(k === 'dark')}
                       dark={dark}
+                      accent={a}
                       title={t('tip.theme', lang)}
                     />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs ${t2}`} title={t('settings.colorTheme.hint', lang)}>
+                      {t('settings.colorTheme', lang)}
+                    </span>
+                    <Pill
+                      value={colorTheme}
+                      options={[
+                        { k: 'fundamentals', l: '📗' },
+                        { k: 'options-desk', l: '📘' },
+                      ]}
+                      onChange={(k) => setColorTheme(normalizeColorTheme(k))}
+                      dark={dark}
+                      accent={a}
+                      title={t('settings.colorTheme.hint', lang)}
+                    />
+                  </div>
+                  <div className={`text-[10px] ${mt}`}>
+                    {t(`colorTheme.${colorTheme}`, lang)} — {t('settings.colorTheme.hint', lang)}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-xs ${t2}`}>{t('settings.lang', lang)}</span>
@@ -1854,6 +1979,7 @@ function App() {
                       ]}
                       onChange={(k) => setLang(k as Language)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.lang', lang)}
                     />
                   </div>
@@ -1867,6 +1993,7 @@ function App() {
                       ]}
                       onChange={(k) => setView(k as View)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.view', lang)}
                     />
                   </div>
@@ -1881,6 +2008,7 @@ function App() {
                       ]}
                       onChange={(k) => setMode(k as Mode)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.mode', lang)}
                     />
                   </div>
@@ -1896,6 +2024,7 @@ function App() {
                       ]}
                       onChange={(k) => setDataSource(k as DataSource)}
                       dark={dark}
+                      accent={a}
                       title={t('tip.source', lang)}
                     />
                   </div>
@@ -1911,7 +2040,7 @@ function App() {
                           type="checkbox"
                           checked={preferUsd}
                           onChange={(event) => setPreferUsd(event.target.checked)}
-                          className="h-4 w-4 accent-emerald-500 cursor-pointer"
+                          className={`h-4 w-4 ${a.accentInput} cursor-pointer`}
                         />
                       </label>
                       <div className={`text-[10px] ${mt}`}>
@@ -1947,7 +2076,7 @@ function App() {
                       <label className={`text-xs ${t2}`} htmlFor="proxy-www-url">
                         www
                       </label>
-                      <span className={`text-xs font-mono ${wwwOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <span className={`text-xs font-mono ${wwwOk ? a.statusOk : 'text-red-500'}`}>
                         {wwwOk ? '● online' : '● offline'}
                       </span>
                     </div>
@@ -1959,13 +2088,13 @@ function App() {
                       spellCheck={false}
                       title={t('settings.proxyWwwUrl', lang)}
                       placeholder={DEFAULT_WWW_PROXY}
-                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none focus:border-emerald-500`}
+                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none ${a.focusBorder}`}
                     />
                     <div className="flex items-center justify-between gap-2">
                       <label className={`text-xs ${t2}`} htmlFor="proxy-data-url">
                         data
                       </label>
-                      <span className={`text-xs font-mono ${dataOk ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <span className={`text-xs font-mono ${dataOk ? a.statusOk : 'text-red-500'}`}>
                         {dataOk ? '● online' : '● offline'}
                       </span>
                     </div>
@@ -1977,7 +2106,7 @@ function App() {
                       spellCheck={false}
                       title={t('settings.proxyDataUrl', lang)}
                       placeholder={DEFAULT_DATA_PROXY}
-                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none focus:border-emerald-500`}
+                      className={`w-full ${inp} border rounded-lg px-2 py-1.5 font-mono text-[11px] focus:outline-none ${a.focusBorder}`}
                     />
                     <div className={`text-[10px] space-y-0.5 font-mono ${mt}`}>
                       <div>
@@ -2019,7 +2148,7 @@ function App() {
                   <div className="space-y-1">
                     <div className={`text-[10px] ${mt}`}>{t('proxy.actual', lang)}</div>
                     <pre
-                      className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-2 rounded text-[11px] font-mono overflow-x-auto`}
+                      className={`${dark ? a.monoBlockDark : a.monoBlockLight} p-2 rounded text-[11px] font-mono overflow-x-auto`}
                     >{PROXY_COMMAND}</pre>
                   </div>
                   <button
@@ -2053,9 +2182,9 @@ function App() {
             <p className={`font-bold mb-1 ${t1}`}>{t('proxy.title', lang)}</p>
             <p className={`text-xs mb-3 ${mt}`}>{t('proxy.orBun', lang)}</p>
             <pre
-              className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-emerald-700'} p-3 rounded text-xs font-mono overflow-x-auto`}
+              className={`${dark ? a.monoBlockDark : a.monoBlockLight} p-3 rounded text-xs font-mono overflow-x-auto`}
             >{PROXY_COMMAND}</pre>
-            <button onClick={init} className="mt-3 text-emerald-500 text-xs hover:underline">
+            <button onClick={init} className={`mt-3 ${a.statusOk} text-xs hover:underline`}>
               {t('proxy.retry', lang)}
             </button>
           </div>
@@ -2069,7 +2198,7 @@ function App() {
             </div>
             {error.includes('Proxy not reachable') && (
               <pre
-                className={`${dark ? 'bg-slate-900 text-emerald-300' : 'bg-red-50 text-red-700'} ml-5 p-2 rounded text-[11px] font-mono overflow-x-auto`}
+                className={`${dark ? a.monoBlockDark : 'bg-red-50 text-red-700'} ml-5 p-2 rounded text-[11px] font-mono overflow-x-auto`}
               >{PROXY_COMMAND}</pre>
             )}
             <div className="pl-5">

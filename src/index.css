@@ -40,6 +40,8 @@ input[type='range'].scale-slider::-moz-range-thumb {
   cursor: pointer;
   border: none;
 }
+
+/* Palette-aware slider thumbs (default = Emerald Ledger / fundamentals) */
 .dark input[type='range'].scale-slider { background: #334155; }
 .dark input[type='range'].scale-slider::-webkit-slider-thumb { background: #34d399; }
 .dark input[type='range'].scale-slider::-moz-range-thumb { background: #34d399; }
@@ -47,8 +49,19 @@ html:not(.dark) input[type='range'].scale-slider { background: #cbd5e1; }
 html:not(.dark) input[type='range'].scale-slider::-webkit-slider-thumb { background: #059669; }
 html:not(.dark) input[type='range'].scale-slider::-moz-range-thumb { background: #059669; }
 
+html[data-palette='options-desk'].dark input[type='range'].scale-slider::-webkit-slider-thumb { background: #818cf8; }
+html[data-palette='options-desk'].dark input[type='range'].scale-slider::-moz-range-thumb { background: #818cf8; }
+html[data-palette='options-desk']:not(.dark) input[type='range'].scale-slider::-webkit-slider-thumb { background: #4f46e5; }
+html[data-palette='options-desk']:not(.dark) input[type='range'].scale-slider::-moz-range-thumb { background: #4f46e5; }
+
+/* Surfaces: fundamentals = slate-950 dark; options-desk = slate-900 dark */
 html.dark, html.dark body {
   background: #020617 !important;
   color: #f1f5f9 !important;
   color-scheme: dark;
+}
+html.dark[data-palette='options-desk'],
+html.dark[data-palette='options-desk'] body {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
 }
