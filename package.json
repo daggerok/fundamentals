@@ -48,12 +48,12 @@
     "react-dom": "19.2.7",
     "recharts": "3.9.2",
     "tailwind-merge": "3.6.0",
-    "tailwindcss": "4.3.2"
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@parcel/resolver-default": "2.16.4",
     "@parcel/transformer-sass": "2.16.4",
-    "@tailwindcss/postcss": "4.3.2",
+    "@tailwindcss/postcss": "4.3.3",
     "@types/bun": "1.3.14",
     "@types/node": "26.1.1",
     "@types/react": "19.2.17",
