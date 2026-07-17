@@ -24,7 +24,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.target_branch }}
-          fetch-depth: 0
+          # Dependency updates only need a shallow history to commit and push.
+          fetch-depth: 2
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
