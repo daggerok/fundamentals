@@ -24,6 +24,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref }}
+          # The static build needs no deeper commit history.
+          fetch-depth: 2
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
