@@ -33,7 +33,7 @@ jobs:
           bun-version: latest
 
       - name: Cache Bun dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('**/package.json') }}
@@ -62,6 +62,7 @@ jobs:
           fi
 
       - name: Commit and push dependency updates
+        id: push
         if: steps.changes.outputs.changed == 'true'
         env:
           TARGET_BRANCH: ${{ inputs.target_branch }}
@@ -71,14 +72,30 @@ jobs:
           git config user.email "daggerok@gmail.com"
           git add package.json bun.lock
           if git diff --staged --quiet; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             echo "No staged dependency changes — nothing to commit."
           else
             git commit -m "$COMMIT_MESSAGE"
-            git push origin "HEAD:${TARGET_BRANCH}" || echo "Push failed (may be up-to-date or race condition)"
+            git push origin "HEAD:${TARGET_BRANCH}"
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Pushes made with GITHUB_TOKEN do not emit a push workflow run. Dispatch
+      # CI explicitly so automated dependency commits receive the same validation.
+      - name: Trigger CI for updated branch
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yaml/dispatches \
+            -d "{\"ref\":\"${TARGET_BRANCH}\"}"
+
       - name: Trigger GitHub Pages deploy for updated branch
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.push.outputs.pushed == 'true'
         env:
           TARGET_BRANCH: ${{ inputs.target_branch }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
