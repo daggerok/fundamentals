@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   update:
@@ -41,7 +42,7 @@ jobs:
           fetch-depth: 2
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v8
         with:
           enable-cache: true
           python-version: "3.13"
@@ -49,14 +50,31 @@ jobs:
       - name: Prefetch SEC static cache (coverage-first)
         run: TICKERS=$(cat data/All.txt) uv run python scripts/fundamentals-data.py
 
-      - name: Commit refreshed data
+      - name: Commit and push refreshed data
+        id: push
         run: |
           git config user.name  "Maksim Kostromin"
           git config user.email "daggerok@gmail.com"
           git add data/ || true
           if git diff --staged --quiet; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             echo "No data changes — nothing to commit."
           else
-            git commit -m "chore(data): refresh SEC static cache [skip ci]"
-            git push || echo "Push failed (may be up-to-date or race condition)"
+            git commit -m "chore(data): refresh SEC static cache"
+            git push
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # Pushes made with GITHUB_TOKEN do not emit a push workflow run. Dispatch
+      # CI explicitly so refreshed data commits are validated as well.
+      - name: Trigger CI for refreshed data
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yaml/dispatches \
+            -d "{\"ref\":\"${TARGET_BRANCH}\"}"
