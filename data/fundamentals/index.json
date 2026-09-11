@@ -262,12 +262,13 @@
     "WLDN",
     "WMT",
     "WPM",
+    "XOM",
     "XYZ",
     "YELP",
     "ZETA",
     "ZM"
   ],
-  "count": 266,
+  "count": 267,
   "names": {
     "AAPL": "Apple Inc.",
     "ABBV": "AbbVie Inc.",
@@ -531,6 +532,7 @@
     "WLDN": "Willdan Group, Inc.",
     "WMT": "Walmart Inc.",
     "WPM": "Wheaton Precious Metals Corp.",
+    "XOM": "ExxonMobil Holdings Corp",
     "XYZ": "Block, Inc.",
     "YELP": "YELP INC",
     "ZETA": "Zeta Global Holdings Corp.",
