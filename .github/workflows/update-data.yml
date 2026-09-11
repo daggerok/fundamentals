@@ -41,11 +41,7 @@ jobs:
           # This job only needs the current tree and a minimal history for its push.
           fetch-depth: 2
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v8
-        with:
-          enable-cache: true
-          python-version: "3.13"
+      - uses: ./.github/actions/uv
 
       - name: Prefetch SEC static cache (coverage-first)
         run: TICKERS=$(cat data/All.txt) uv run python scripts/fundamentals-data.py
