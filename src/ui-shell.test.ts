@@ -102,3 +102,12 @@ describe('color theme settings', () => {
     expect(css).toContain("data-palette='options-desk'");
   });
 });
+
+describe('companyfacts localStorage cache', () => {
+  test('defers the write to idle time but writes synchronously on beforeunload', () => {
+    expect(main).toContain('requestIdleCallback(run, { timeout: 2000 })');
+    expect(main).toContain('setTimeout(run, 0)');
+    expect(main).toContain('sc({ facts: factsCache, company }, true);');
+    expect(main).toMatch(/function cc\(\) \{\n {2}cancelPendingCacheWrite\?\.\(\);/);
+  });
+});

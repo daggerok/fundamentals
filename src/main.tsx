@@ -656,28 +656,50 @@ function lc(): any {
     return null;
   }
 }
-function sc(c: any) {
-  try {
-    const j = JSON.stringify(c);
-    // Prefer full cache; if over ~4MB quota, keep company-only so UI can restore shell + offer refresh
-    if (j.length < 4 * 1024 * 1024) {
-      localStorage.setItem(LS_C, j);
-      return;
-    }
-    localStorage.setItem(
-      LS_C,
-      JSON.stringify({ company: c?.company || null, facts: null, partial: true }),
-    );
-  } catch {
+/** Cancels the sc() write that is still waiting for idle time; a newer sc() or cc() replaces it. */
+let cancelPendingCacheWrite: (() => void) | null = null;
+
+/** Persist the last companyfacts. JSON.stringify + setItem block the main thread, so by default they run when the browser is idle; `immediate` writes now (beforeunload). */
+function sc(c: any, immediate = false) {
+  cancelPendingCacheWrite?.();
+  cancelPendingCacheWrite = null;
+  const run = () => {
+    cancelPendingCacheWrite = null;
     try {
+      const j = JSON.stringify(c);
+      // Prefer full cache; if over ~4MB quota, keep company-only so UI can restore shell + offer refresh
+      if (j.length < 4 * 1024 * 1024) {
+        localStorage.setItem(LS_C, j);
+        return;
+      }
       localStorage.setItem(
         LS_C,
         JSON.stringify({ company: c?.company || null, facts: null, partial: true }),
       );
-    } catch {}
+    } catch {
+      try {
+        localStorage.setItem(
+          LS_C,
+          JSON.stringify({ company: c?.company || null, facts: null, partial: true }),
+        );
+      } catch {}
+    }
+  };
+  if (immediate) {
+    run();
+    return;
+  }
+  if (typeof requestIdleCallback === 'function') {
+    const id = requestIdleCallback(run, { timeout: 2000 });
+    cancelPendingCacheWrite = () => cancelIdleCallback(id);
+  } else {
+    const id = setTimeout(run, 0);
+    cancelPendingCacheWrite = () => clearTimeout(id);
   }
 }
 function cc() {
+  cancelPendingCacheWrite?.();
+  cancelPendingCacheWrite = null;
   try {
     localStorage.removeItem(LS_C);
   } catch {}
@@ -1218,7 +1240,8 @@ function App() {
 
   useEffect(() => {
     const onLeave = () => {
-      if (company && factsCache) sc({ facts: factsCache, company });
+      // The page is unloading: an idle callback would never run, write synchronously.
+      if (company && factsCache) sc({ facts: factsCache, company }, true);
       sp({ ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd });
     };
     window.addEventListener('beforeunload', onLeave);
