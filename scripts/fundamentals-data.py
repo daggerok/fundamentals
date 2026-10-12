@@ -59,6 +59,65 @@ REQUEST_SLEEP = float(os.environ.get("REQUEST_SLEEP", os.environ.get("REQUEST_SL
 SKIP_FRESH_HOURS = float(os.environ.get("SKIP_FRESH_HOURS", "24"))
 UNIVERSE_SIZE = int(os.environ.get("UNIVERSE_SIZE", "0"))  # 0 = entire company_tickers map
 MIN_FACTS_BYTES = int(os.environ.get("MIN_FACTS_BYTES", "5000"))
+# Concepts the dashboard reads (src/main.tsx `const CON`): everything else is dropped from the static files.
+# Keep in sync: src/concepts-parity.test.ts fails when the two lists differ.
+KEEP_CONCEPTS = frozenset("""
+AccountsPayableCurrent AccountsReceivableNet AccountsReceivableNetCurrent AdjustedWeightedAverageShares
+AmortisationExpense Assets AssetsCurrent BasicEarningsLossPerShare CashAndCashEquivalents
+CashAndCashEquivalentsAtCarryingValue CashCashEquivalentsAndShortTermInvestments
+CashFlowsFromUsedInOperatingActivities CashGeneratedFromOperatingActivities CommonStockSharesOutstanding
+CostOfGoodsAndServicesSold CostOfGoodsSold CostOfRevenue CostOfSales CurrentAssets CurrentLiabilities
+CurrentTradeReceivables DebtCurrent Depreciation DepreciationAmortizationAndAccretionNet
+DepreciationAndAmortisationExpense DepreciationAndAmortization DepreciationDepletionAndAmortization
+DepreciationExpense DilutedEarningsLossPerShare DividendsPaid DividendsPaidClassifiedAsFinancingActivities
+EarningsPerShareBasic EarningsPerShareDiluted Equity EquityAttributableToOwnersOfParent Goodwill GrossProfit
+IntangibleAssetsNetExcludingGoodwill IntangibleAssetsOtherThanGoodwill Inventories InventoryNet Liabilities
+LiabilitiesCurrent LongTermDebt LongTermDebtNoncurrent LongtermBorrowings
+NetCashFlowsFromUsedInOperatingActivities NetCashProvidedByUsedInOperatingActivities
+NetCashProvidedByUsedInOperatingActivitiesContinuingOperations NetIncomeLoss
+NetIncomeLossAvailableToCommonStockholdersBasic OperatingIncome OperatingIncomeLoss OperatingProfitLoss
+PaymentsForCapitalImprovements PaymentsForRepurchaseOfCommonStock PaymentsForRepurchaseOfEquity
+PaymentsOfDividends PaymentsOfDividendsCommonStock PaymentsToAcquireOwnEquity
+PaymentsToAcquirePropertyPlantAndEquipment ProfitLoss ProfitLossFromOperatingActivities
+PropertyPlantAndEquipment PropertyPlantAndEquipmentNet PurchaseOfPropertyPlantAndEquipment
+PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities ResearchAndDevelopmentExpense
+ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost Revenue
+RevenueFromContractWithCustomerExcludingAssessedTax RevenueFromContractWithCustomerIncludingAssessedTax
+Revenues Sales SalesRevenueGoodsNet SalesRevenueNet SellingGeneralAndAdministrativeExpense
+ShortTermBorrowings ShorttermBorrowings StockholdersEquity
+StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest TradeAndOtherCurrentPayables
+TradeAndOtherCurrentPayablesToTradeSuppliers TradeAndOtherCurrentReceivables
+WeightedAverageNumberOfDilutedSharesOutstanding WeightedAverageNumberOfShareOutstandingBasicAndDiluted
+WeightedAverageShares
+""".split())
+KEEP_FORMS = frozenset({"10-K", "10-Q", "20-F", "40-F", "6-K"})  # the forms data-utils.ts reads (annual, quarterly, interim); /A amendments kept too
+
+
+def trim_facts(facts: dict) -> dict:
+    """Keep only the concepts and filing forms the dashboard reads; row fields are kept verbatim."""
+    out: dict = {}
+    for taxonomy, concepts in facts.items():
+        if not isinstance(concepts, dict):
+            continue
+        kept: dict = {}
+        for concept, fact in concepts.items():
+            if concept not in KEEP_CONCEPTS or not isinstance(fact, dict):
+                continue
+            units_in = fact.get("units") if isinstance(fact.get("units"), dict) else {}
+            units_out = {}
+            for unit, rows in units_in.items():
+                if not isinstance(rows, list):
+                    continue
+                kept_rows = [r for r in rows if isinstance(r, dict) and str(r.get("form", "")).replace("/A", "") in KEEP_FORMS]
+                if kept_rows:
+                    units_out[unit] = kept_rows
+            if units_out:
+                kept[concept] = {**fact, "units": units_out}
+        if kept:
+            out[taxonomy] = kept
+    return out
+
+
 FORCE_TICKERS_REFRESH = os.environ.get("FORCE_TICKERS_REFRESH", "").lower() in (
     "1", "true", "yes", "on",
 )
@@ -242,7 +301,7 @@ def build_work_queue(tmap: dict[str, dict]) -> tuple[list[str], int, int, int]:
 
 def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
     path = DATA_DIR / f"{symbol}.json"
-    facts = raw.get("facts") if isinstance(raw.get("facts"), dict) else raw
+    facts = trim_facts(raw.get("facts") if isinstance(raw.get("facts"), dict) else raw)
     payload = {
         "symbol": symbol,
         "ticker": symbol,
