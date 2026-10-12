@@ -1,0 +1,91 @@
+/// <reference types="bun" />
+import { describe, expect, test } from 'bun:test';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { type DataMode, detectPrimaryCurrency, extractMetric, normalizeFacts } from './data-utils';
+
+// The static files are trimmed by scripts/fundamentals-data.py trim_facts (plan 04-4.2).
+// These tests run that exact Python function on real cached companyfacts and check that
+// everything the dashboard computes from the facts (proc() in main.tsx) is unchanged.
+
+const script = fileURLToPath(new URL('../scripts/fundamentals-data.py', import.meta.url));
+
+/** Metric key -> concept list, parsed from `const CON` in main.tsx (the list proc() reads). */
+function dashboardConcepts(): Record<string, string[]> {
+  const ts = readFileSync(new URL('./main.tsx', import.meta.url), 'utf8');
+  const start = ts.indexOf('const CON: Record<string, string[]> = {');
+  const block = ts.slice(start, ts.indexOf('\n};', start));
+  const con: Record<string, string[]> = {};
+  let key = '';
+  for (const line of block.split('\n').slice(1)) {
+    const header = line.match(/^ {2}(\w+): \[/);
+    if (header) {
+      key = header[1];
+      con[key] = [];
+    }
+    for (const match of line.matchAll(/'([A-Z][A-Za-z]+)'/g)) con[key].push(match[1]);
+  }
+  return con;
+}
+
+/** Run the Python trim_facts on a cached file (python3 is preinstalled on the CI runner). */
+function trimWithPython(file: string): any {
+  const code = [
+    'import importlib.util, json, sys',
+    'spec = importlib.util.spec_from_file_location("fd", sys.argv[1])',
+    'fd = importlib.util.module_from_spec(spec); spec.loader.exec_module(fd)',
+    'doc = json.load(open(sys.argv[2], encoding="utf-8"))',
+    'sys.stdout.write(json.dumps(fd.trim_facts(doc.get("facts") if isinstance(doc.get("facts"), dict) else doc)))',
+  ].join('\n');
+  return JSON.parse(execFileSync('python3', ['-c', code, script, file], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }));
+}
+
+/** Everything proc() derives from the facts except the debug-only "available" lists. */
+function dashboardNumbers(facts: any, mode: DataMode, preferUsd: boolean, con: Record<string, string[]>) {
+  const primaryCurrency = detectPrimaryCurrency(facts, mode);
+  const metrics: Record<string, unknown> = {};
+  for (const [key, concepts] of Object.entries(con)) {
+    metrics[key] = extractMetric(facts, concepts, mode, { preferUsd, preferredCurrency: primaryCurrency });
+  }
+  return { primaryCurrency, metrics };
+}
+
+const con = dashboardConcepts();
+// AAPL: plain us-gaap 10-K/10-Q; JPM: bank (no revenue/COGS concepts); VICI: REIT with CAD units; TTE: IFRS 20-F
+const TICKERS = ['AAPL', 'JPM', 'VICI', 'TTE'];
+
+describe('trimmed companyfacts show the same dashboard numbers', () => {
+  test('CON has the expected shape', () => {
+    expect(Object.keys(con).length).toBeGreaterThan(20);
+    expect(con.revenue).toContain('Revenues');
+  });
+
+  for (const ticker of TICKERS) {
+    const file = fileURLToPath(new URL(`../data/fundamentals/${ticker}.json`, import.meta.url));
+    test.skipIf(!existsSync(file))(`${ticker}: trim_facts keeps every value proc() reads`, () => {
+      const full = normalizeFacts(JSON.parse(readFileSync(file, 'utf8')));
+      const trimmed = trimWithPython(file);
+      let filled = 0;
+      for (const mode of ['Y', 'Q', 'I'] as DataMode[]) {
+        for (const preferUsd of [true, false]) {
+          const before = dashboardNumbers(full, mode, preferUsd, con);
+          const after = dashboardNumbers(trimmed, mode, preferUsd, con);
+          expect(after).toEqual(before);
+          filled += Object.values(before.metrics).filter((rows) => Array.isArray(rows) && rows.length).length;
+        }
+      }
+      // Guard against a vacuous pass where both sides are empty.
+      expect(filled).toBeGreaterThan(10);
+    });
+  }
+
+  test('dropping a concept the dashboard reads changes the numbers', () => {
+    const file = fileURLToPath(new URL('../data/fundamentals/AAPL.json', import.meta.url));
+    if (!existsSync(file)) return;
+    const trimmed = trimWithPython(file);
+    const broken = structuredClone(trimmed);
+    delete broken['us-gaap'].NetIncomeLoss;
+    expect(dashboardNumbers(broken, 'Y', true, con)).not.toEqual(dashboardNumbers(trimmed, 'Y', true, con));
+  });
+});

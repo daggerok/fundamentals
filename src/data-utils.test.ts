@@ -159,7 +159,10 @@ describe('metric extraction', () => {
   test('keeps ASML revenue in EUR because response-wide USD belongs to other facts', () => {
     const doc = loadFixture('ASML');
     if (!doc) return;
-    const facts = normalizeFacts(doc);
+    // Static files keep only the dashboard concepts (plan 04-4.2), which drops ASML's own USD facts.
+    // One USD fact outside those concepts keeps the "USD elsewhere in the response" case for both shapes.
+    const otherUsdFact = { end: '2024-12-31', val: 1, fy: 2024, fp: 'FY', form: '20-F', filed: '2025-02-12' };
+    const facts = { ...normalizeFacts(doc), 'test-extra': { OtherUsdFact: { units: { USD: [otherUsdFact] } } } };
     const primaryCurrency = detectPrimaryCurrency(facts, 'Y');
     const revenue = extractMetric(
       facts,
