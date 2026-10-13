@@ -7,7 +7,6 @@ import React, {
   useMemo,
   useRef,
   useCallback,
-  Fragment,
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
@@ -1154,6 +1153,8 @@ const Pill = ({
   </div>
 );
 
+const REPO_URL = 'https://github.com/daggerok/fundamentals';
+
 function App() {
   const prefs = useMemo(() => lp(), []);
   const cached = useMemo(() => lc(), []);
@@ -1582,7 +1583,7 @@ function App() {
         : t('debug.idle', lang);
 
   return (
-    <Fragment>
+    <div className="flex min-h-screen flex-col">
       <div className={`sticky top-0 z-50 ${bg} backdrop-blur-md border-b ${bdr}`}>
         <div className="px-4 xl:px-8">
           <div className="flex items-center gap-2 sm:gap-3 py-3">
@@ -2233,7 +2234,7 @@ function App() {
         </div>
       </div>
 
-      <div className="px-4 xl:px-8 py-6">
+      <div className="flex-1 px-4 xl:px-8 py-6">
         {!tickers && !tkL && (
           <div className={`${card} border rounded-xl p-5 mb-6 text-sm max-w-3xl mx-auto`}>
             <p className={`font-bold mb-1 ${t1}`}>{t('proxy.title', lang)}</p>
@@ -2396,7 +2397,12 @@ function App() {
           <div className={`text-center py-20 ${mt}`}>{t('no.data', lang)}</div>
         )}
       </div>
-    </Fragment>
+      <footer className={`px-4 pb-3 text-center text-[10px] leading-tight ${mt}`}>
+        <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={`transition-colors ${dark ? 'hover:text-slate-200' : 'hover:text-slate-600'}`}>
+          daggerok &copy; {new Date().getFullYear()}
+        </a>
+      </footer>
+    </div>
   );
 }
 
