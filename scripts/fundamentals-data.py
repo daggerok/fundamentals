@@ -334,6 +334,16 @@ def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
     if not usable:
         present = list(fobj.keys())[:12] if isinstance(fobj, dict) else []
         raise ValueError(f"no usable companyfacts taxonomies (present: {present})")
+    # Write only on a real change: a refetch of unchanged SEC data keeps the file (and its `updated`),
+    # so a daily refresh commits only the tickers that got new filings.
+    if path.exists():
+        try:
+            old = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = None
+        if isinstance(old, dict) and {**old, "updated": None} == {**payload, "updated": None}:
+            os.utime(path)  # same content: mark it fresh for the local mtime check
+            return path
     path.write_text(text, encoding="utf-8")
     return path
 
