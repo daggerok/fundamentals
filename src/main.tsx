@@ -2236,7 +2236,7 @@ function App() {
 
       <div className="flex-1 px-4 xl:px-8 pt-6">
         {!tickers && !tkL && (
-          <div className={`${card} border rounded-xl p-5 mb-6 text-sm max-w-3xl mx-auto`}>
+          <div className={`${card} border rounded-xl p-5 mb-6 last:mb-0 text-sm max-w-3xl mx-auto`}>
             <p className={`font-bold mb-1 ${t1}`}>{t('proxy.title', lang)}</p>
             <p className={`text-xs mb-3 ${mt}`}>{t('proxy.orBun', lang)}</p>
             <pre
@@ -2249,7 +2249,7 @@ function App() {
         )}
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded-xl mb-6 text-sm flex flex-col gap-2 animate-fade-in max-w-3xl mx-auto">
+          <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded-xl mb-6 last:mb-0 text-sm flex flex-col gap-2 animate-fade-in max-w-3xl mx-auto">
             <div className="flex items-start gap-2 whitespace-pre-wrap">
               <span className="flex-shrink-0 mt-0.5">✕</span>
               <span className="flex-1 font-mono text-xs">{error}</span>
