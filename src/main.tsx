@@ -2234,7 +2234,7 @@ function App() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 xl:px-8 py-6">
+      <div className="flex-1 px-4 xl:px-8 pt-6 pb-4 xl:pb-8">
         {!tickers && !tkL && (
           <div className={`${card} border rounded-xl p-5 mb-6 text-sm max-w-3xl mx-auto`}>
             <p className={`font-bold mb-1 ${t1}`}>{t('proxy.title', lang)}</p>
@@ -2397,7 +2397,7 @@ function App() {
           <div className={`text-center py-20 ${mt}`}>{t('no.data', lang)}</div>
         )}
       </div>
-      <footer className={`px-4 pb-3 text-center text-[10px] leading-tight ${mt}`}>
+      <footer className={`px-4 xl:px-8 pb-4 xl:pb-8 flex justify-center text-[10px] leading-none ${mt}`}>
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={`transition-colors ${dark ? 'hover:text-slate-200' : 'hover:text-slate-600'}`}>
           daggerok &copy; {new Date().getFullYear()}
         </a>
