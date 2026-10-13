@@ -31,7 +31,10 @@ jobs:
       MAX_FETCHES: "500"
       MAX_RETRIES: "2"
       REQUEST_SLEEP: "0.5"
-      SKIP_FRESH_HOURS: "24"
+      # 0 = refetch every ticker: freshness is the file mtime, and after a checkout every file looks fresh, so
+      # "24" skipped all of them on every run. Unchanged SEC data is not rewritten (write_ticker_cache), so only
+      # tickers with new filings are committed
+      SKIP_FRESH_HOURS: "0"
       # UNIVERSE_SIZE: "0"   # 0 = all company_tickers; set e.g. 500 to limit
       # TICKERS: "AAPL MSFT" # optional explicit list
     steps:

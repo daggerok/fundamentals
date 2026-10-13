@@ -89,3 +89,28 @@ describe('trimmed companyfacts show the same dashboard numbers', () => {
     expect(dashboardNumbers(broken, 'Y', true, con)).not.toEqual(dashboardNumbers(trimmed, 'Y', true, con));
   });
 });
+
+describe('write_ticker_cache writes only on a real change', () => {
+  test('a refetch with the same SEC facts keeps the file byte for byte, new facts rewrite it', () => {
+    const file = fileURLToPath(new URL('../data/fundamentals/AAPL.json', import.meta.url));
+    if (!existsSync(file)) return;
+    const code = [
+      'import importlib.util, json, sys, tempfile, time',
+      'from pathlib import Path',
+      'spec = importlib.util.spec_from_file_location("fd", sys.argv[1])',
+      'fd = importlib.util.module_from_spec(spec); spec.loader.exec_module(fd)',
+      'fd.DATA_DIR = Path(tempfile.mkdtemp())',
+      'doc = json.load(open(sys.argv[2], encoding="utf-8"))',
+      'raw = {"entityName": doc.get("entityName"), "facts": doc["facts"]}',
+      'meta = {"cik": doc["cik"], "title": doc.get("title")}',
+      'p = fd.write_ticker_cache("AAPL", meta, raw); first = p.read_text()',
+      'time.sleep(1.1)',
+      'fd.write_ticker_cache("AAPL", meta, raw); second = p.read_text()',
+      'raw["facts"]["us-gaap"]["NetIncomeLoss"]["units"]["USD"].append({"end": "2099-12-31", "val": 1, "form": "10-K", "fy": 2099, "fp": "FY", "filed": "2100-01-01"})',
+      'fd.write_ticker_cache("AAPL", meta, raw); third = p.read_text()',
+      'print(json.dumps({"same": first == second, "changed": third != first}))',
+    ].join('\n');
+    const out = JSON.parse(execFileSync('python3', ['-c', code, script, file], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+    expect(out).toEqual({ same: true, changed: true });
+  });
+});
