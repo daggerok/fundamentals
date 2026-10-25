@@ -184,6 +184,100 @@ function filingIndex(facts: any): FilingIndex {
   return index;
 }
 
+/** Stock split ratios: n-for-1 up to 50-for-1, and 5-for-4, 4-for-3, 3-for-2, 5-for-2. */
+const SPLIT_RATIOS = [1.25, 4 / 3, 1.5, 2.5, ...Array.from({ length: 49 }, (_, i) => i + 2)];
+
+/**
+ * The split between two reports of one share count: 1 (none), a split ratio, or the inverse of
+ * one (reverse split); null for anything else (a restatement, or a tagging error in thousands).
+ */
+function splitRatio(ratio: number): number | null {
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  if (Math.abs(ratio - 1) <= 0.005) return 1;
+  const forward = ratio >= 1 ? ratio : 1 / ratio;
+  const split = SPLIT_RATIOS.find((candidate) => Math.abs(forward - candidate) / candidate <= 0.005);
+  if (!split) return null;
+  return ratio >= 1 ? split : 1 / split;
+}
+
+const shareScaleCache = new WeakMap<object, Map<string, number>>();
+
+/**
+ * Filing -> factor that turns its share counts into the share basis of the newest filing
+ * (NVDA: 10 for filings before the 2024 split, 40 before the 2021 split). A later filing
+ * restates the share counts of the periods it repeats, so every share count that two filings
+ * report for the same period votes for the ratio between their bases; a ratio that is not
+ * 1 or a split ratio (n or n/2) is ignored. A filing that repeats nothing a newer filing
+ * reports keeps the basis of the next newer filing.
+ */
+function shareScales(facts: any): Map<string, number> {
+  const key = normalizeFacts(facts);
+  const cached = key && typeof key === 'object' ? shareScaleCache.get(key) : undefined;
+  if (cached) return cached;
+
+  const filed = new Map<string, string>();
+  const groups = new Map<string, Map<string, number>>();
+  for (const [taxonomyName, taxonomy] of taxonomyEntries(facts)) {
+    for (const [concept, fact] of Object.entries(taxonomy) as Array<[string, any]>) {
+      const rows = fact?.units?.shares;
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        if (!row?.accn || !row?.end || typeof row.val !== 'number' || row.val <= 0) continue;
+        filed.set(row.accn, String(row.filed || ''));
+        const group = `${taxonomyName}|${concept}|${row.start || ''}|${row.end}`;
+        if (!groups.has(group)) groups.set(group, new Map());
+        groups.get(group)!.set(row.accn, row.val);
+      }
+    }
+  }
+  const groupsOf = new Map<string, Array<Map<string, number>>>();
+  for (const group of groups.values()) {
+    if (group.size < 2) continue;
+    for (const accn of group.keys()) groupsOf.set(accn, [...(groupsOf.get(accn) || []), group]);
+  }
+
+  const scales = new Map<string, number>();
+  const newestFirst = [...filed.keys()].sort(
+    (a, b) => filed.get(b)!.localeCompare(filed.get(a)!) || b.localeCompare(a),
+  );
+  let previous = 1;
+  for (const accn of newestFirst) {
+    // One vote per share count (concept and period): its newest later report.
+    const votes: number[] = [];
+    for (const group of groupsOf.get(accn) || []) {
+      const own = group.get(accn)!;
+      const later = [...group.keys()]
+        .filter((other) => scales.has(other) && filed.get(other)! > filed.get(accn)!)
+        .sort((a, b) => filed.get(b)!.localeCompare(filed.get(a)!));
+      for (const other of later) {
+        const ratio = splitRatio(group.get(other)! / own);
+        if (ratio == null) continue;
+        votes.push(Number((scales.get(other)! * ratio).toPrecision(6)));
+        break;
+      }
+    }
+    // Ties keep the current basis; a new basis needs two agreeing votes or no disagreeing one.
+    votes.sort((a, b) => Number(b === previous) - Number(a === previous));
+    const voted = majority(votes);
+    const agreeing = votes.filter((vote) => vote === voted).length;
+    const unanimous = agreeing === votes.length;
+    const scale = voted !== undefined && (voted === previous || agreeing >= 2 || unanimous) ? voted : previous;
+    scales.set(accn, scale);
+    previous = scale;
+  }
+  if (key && typeof key === 'object') shareScaleCache.set(key, scales);
+  return scales;
+}
+
+/** Restate a share count or per-share value of an older filing in the newest share basis. */
+function splitAdjusted(row: any, unit: string, scales: Map<string, number>): any {
+  const scale = scales.get(row?.accn) ?? 1;
+  if (scale === 1 || typeof row?.val !== 'number') return row;
+  if (unit === 'shares') return { ...row, val: row.val * scale, _splitFactor: scale };
+  if (unit.endsWith('/shares')) return { ...row, val: row.val / scale, _splitFactor: scale };
+  return row;
+}
+
 /** True when the row describes the filing's own period, not a prior-period comparative. */
 function isOwnPeriod(row: any, index: FilingIndex): boolean {
   return index.periodEnd.get(filingId(row)) === String(row?.end || '');
@@ -467,10 +561,11 @@ export function extractMetric(
     return Number(Boolean(b.row.frame)) - Number(Boolean(a.row.frame));
   });
   const byPeriod = new Map<string, ExtractedFact>();
+  const scales = shareScales(facts);
   for (const { row, info, candidate, derived } of entries) {
     if (byPeriod.has(info.key)) continue;
     byPeriod.set(info.key, {
-      ...row,
+      ...splitAdjusted(row, candidate.unit, scales),
       _periodKey: info.key,
       _periodLabel: info.label,
       _fiscal: fiscal.get(info.key) || null,

@@ -597,3 +597,112 @@ describe('total debt (values in $M from the cache)', () => {
     expect(totalDebt(parts({}))).toBeNull();
   });
 });
+
+describe('stock splits (real SEC rows)', () => {
+  const nvdaFiling = {
+    '23': { accn: '0001045810-23-000017', fy: 2023, fp: 'FY', form: '10-K', filed: '2023-02-24' },
+    '24': { accn: '0001045810-24-000029', fy: 2024, fp: 'FY', form: '10-K', filed: '2024-02-21' },
+    '25': { accn: '0001045810-25-000023', fy: 2025, fp: 'FY', form: '10-K', filed: '2025-02-26' },
+  };
+  const fy23 = { start: '2022-01-31', end: '2023-01-29' };
+  const fy24 = { start: '2023-01-30', end: '2024-01-28' };
+  // NVDA split 10-for-1 in June 2024: the 2025 10-K restates FY2023 and FY2024 share counts.
+  const nvda = {
+    'us-gaap': {
+      WeightedAverageNumberOfDilutedSharesOutstanding: {
+        units: {
+          shares: [
+            { ...fy23, val: 2507000000, ...nvdaFiling['23'] },
+            { ...fy23, val: 2507000000, ...nvdaFiling['24'] },
+            { ...fy23, val: 25070000000, ...nvdaFiling['25'] },
+            { ...fy24, val: 2494000000, ...nvdaFiling['24'] },
+            { ...fy24, val: 24940000000, ...nvdaFiling['25'] },
+          ],
+        },
+      },
+      CommonStockSharesOutstanding: {
+        units: {
+          shares: [
+            { end: '2023-01-29', val: 2466000000, ...nvdaFiling['23'] },
+            { end: '2023-01-29', val: 2466000000, ...nvdaFiling['24'] },
+            { end: '2024-01-28', val: 2464000000, ...nvdaFiling['24'] },
+            { end: '2024-01-28', val: 24643000000, ...nvdaFiling['25'] },
+          ],
+        },
+      },
+      // FY2023 basic EPS only from the pre-split 10-Ks (the 2025 10-K row is left out on purpose).
+      EarningsPerShareBasic: {
+        units: {
+          'USD/shares': [
+            { ...fy23, val: 1.76, ...nvdaFiling['23'] },
+            { ...fy23, val: 1.76, ...nvdaFiling['24'] },
+            { ...fy24, val: 1.21, ...nvdaFiling['25'] },
+          ],
+        },
+      },
+    },
+  };
+
+  test('NVDA: pre-split share counts and EPS are restated in the newest share basis', () => {
+    expect(byKey(extractMetric(nvda, ['CommonStockSharesOutstanding'], 'Y'))).toEqual({
+      '2023-01-29': 24660000000,
+      '2024-01-28': 24643000000,
+    });
+    const eps = extractMetric(nvda, ['EarningsPerShareBasic'], 'Y');
+    expect(eps.find((row) => row._periodKey === '2023-01-29')?.val).toBeCloseTo(0.176, 6);
+    expect(eps.find((row) => row._periodKey === '2023-01-29')?._splitFactor).toBe(10);
+    expect(eps.find((row) => row._periodKey === '2024-01-28')?.val).toBe(1.21);
+  });
+
+  test('NNN: one inconsistent share count is not a split when the other counts agree', () => {
+    const filing = (accn: string, filed: string, form = '10-Q') => ({ accn, filed, form, fy: 2012, fp: 'Q1' });
+    const tenK = { accn: '0000750561-12-000004', filed: '2012-02-24', form: '10-K', fy: 2011, fp: 'FY' };
+    const tenK13 = { accn: '0000750561-13-000004', filed: '2013-02-22', form: '10-K', fy: 2012, fp: 'FY' };
+    const facts = {
+      'us-gaap': {
+        CommonStockSharesOutstanding: {
+          units: {
+            shares: [
+              { end: '2011-12-31', val: 83613289, ...tenK },
+              { end: '2011-12-31', val: 104754859, ...filing('0000750561-12-000010', '2012-05-04') },
+              { end: '2011-12-31', val: 104754859, ...tenK13 },
+            ],
+          },
+        },
+        WeightedAverageNumberOfDilutedSharesOutstanding: {
+          units: {
+            shares: [
+              { start: '2010-01-01', end: '2010-12-31', val: 82849362, ...tenK },
+              { start: '2010-01-01', end: '2010-12-31', val: 82849362, ...tenK13 },
+              { start: '2011-01-01', end: '2011-12-31', val: 88837057, ...tenK },
+              { start: '2011-01-01', end: '2011-12-31', val: 88837057, ...tenK13 },
+              // Reported only by the 2012 10-K: must keep its value.
+              { start: '2009-01-01', end: '2009-12-31', val: 77000000, ...tenK },
+            ],
+          },
+        },
+      },
+    };
+    const rows = extractMetric(facts, ['WeightedAverageNumberOfDilutedSharesOutstanding'], 'Y');
+    expect(byKey(rows)).toEqual({ '2009-12-31': 77000000, '2010-12-31': 82849362, '2011-12-31': 88837057 });
+    expect(rows.every((row) => row._splitFactor === undefined)).toBe(true);
+  });
+
+  test('a share count tagged in thousands is not taken for a 1000-for-1 split', () => {
+    const tenK = (accn: string, filed: string) => ({ accn, filed, form: '10-K', fy: 2010, fp: 'FY' });
+    const facts = usGaap(
+      'WeightedAverageNumberOfDilutedSharesOutstanding',
+      [
+        { start: '2009-01-01', end: '2009-12-31', val: 5900, ...tenK('a-10', '2010-02-25') },
+        { start: '2009-01-01', end: '2009-12-31', val: 5900000000, ...tenK('a-11', '2011-02-25') },
+        { start: '2008-01-01', end: '2008-12-31', val: 5800, ...tenK('a-10', '2010-02-25') },
+        { start: '2008-01-01', end: '2008-12-31', val: 5800000000, ...tenK('a-11', '2011-02-25') },
+        { start: '2007-01-01', end: '2007-12-31', val: 5700, ...tenK('a-10', '2010-02-25') },
+      ],
+      'shares',
+    );
+    const rows = extractMetric(facts, ['WeightedAverageNumberOfDilutedSharesOutstanding'], 'Y');
+    expect(rows.find((row) => row._periodKey === '2007-12-31')?.val).toBe(5700);
+    expect(rows.every((row) => row._splitFactor === undefined)).toBe(true);
+  });
+});
