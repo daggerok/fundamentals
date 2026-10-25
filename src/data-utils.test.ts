@@ -8,6 +8,7 @@ import {
   normalizeFacts,
   periodLabels,
   staticDataUrl,
+  totalDebt,
   withGrossProfitFallback,
 } from './data-utils';
 
@@ -512,5 +513,87 @@ describe('period keys on the repository cache', () => {
     expect(revenue.find((row) => row._periodKey === '2026-01-31')?.val).toBe(706413000000);
     expect(assets.some((row) => row._periodKey === '2026-01-31')).toBe(true);
     expect(new Set(labels.values()).size).toBe(labels.size);
+  });
+});
+
+describe('concept priority across aliases (real SEC rows)', () => {
+  const tenK = (accn: string, filed: string, fy: number) => ({ accn, filed, fy, fp: 'FY', form: '10-K' });
+
+  test('APP: NetIncomeLoss beats an alias of the same filing that carries a frame', () => {
+    const facts = {
+      'us-gaap': {
+        NetIncomeLoss: { units: { USD: [{ start: '2024-01-01', end: '2024-12-31', val: 1579776000, ...tenK('0001751008-26-000010', '2026-02-19', 2025) }] } },
+        NetIncomeLossAvailableToCommonStockholdersBasic: {
+          units: { USD: [{ start: '2024-01-01', end: '2024-12-31', val: 1577059000, ...tenK('0001751008-26-000010', '2026-02-19', 2025), frame: 'CY2024' }] },
+        },
+        ProfitLoss: { units: { USD: [{ start: '2024-01-01', end: '2024-12-31', val: 1579776000, ...tenK('0001751008-25-000018', '2025-02-27', 2024), frame: 'CY2024' }] } },
+      },
+    };
+    const rows = extractMetric(facts, ['NetIncomeLoss', 'NetIncomeLossAvailableToCommonStockholdersBasic', 'ProfitLoss'], 'Y');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]._concept).toBe('NetIncomeLoss');
+    expect(rows[0].val).toBe(1579776000);
+  });
+
+  test('a lower-priority alias in a newer filing does not replace the preferred concept', () => {
+    const facts = {
+      'us-gaap': {
+        EarningsPerShareBasic: { units: { 'USD/shares': [{ start: '2024-01-01', end: '2024-12-31', val: 2.0, ...tenK('a-1', '2025-02-01', 2024) }] } },
+        EarningsPerShareDiluted: { units: { 'USD/shares': [{ start: '2024-01-01', end: '2024-12-31', val: 1.9, ...tenK('a-2', '2026-02-01', 2025) }] } },
+      },
+    };
+    const rows = extractMetric(facts, ['EarningsPerShareBasic', 'EarningsPerShareDiluted'], 'Y');
+    expect(rows.map((row) => [row._concept, row.val])).toEqual([['EarningsPerShareBasic', 2.0]]);
+  });
+
+  test('ALLY revenue: the largest revenue of the filing is the total, not fee revenue', () => {
+    const facts = {
+      'us-gaap': {
+        RevenueFromContractWithCustomerExcludingAssessedTax: {
+          units: { USD: [{ start: '2025-01-01', end: '2025-12-31', val: 1244000000, ...tenK('0000040729-26-000005', '2026-02-25', 2025), frame: 'CY2025' }] },
+        },
+        Revenues: {
+          units: { USD: [{ start: '2025-01-01', end: '2025-12-31', val: 7914000000, ...tenK('0000040729-26-000005', '2026-02-25', 2025), frame: 'CY2025' }] },
+        },
+      },
+    };
+    const keys = ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues'];
+    expect(extractMetric(facts, keys, 'Y')[0].val).toBe(1244000000);
+    expect(extractMetric(facts, keys, 'Y', {}, { maxOf: keys })[0].val).toBe(7914000000);
+  });
+
+  test('PM revenue: excise-inclusive revenue is only a fallback outside maxOf', () => {
+    const row = { start: '2020-01-01', end: '2020-12-31', ...tenK('0001413329-23-000025', '2023-02-10', 2022), frame: 'CY2020' };
+    const facts = {
+      'us-gaap': {
+        RevenueFromContractWithCustomerExcludingAssessedTax: { units: { USD: [{ ...row, val: 28694000000 }] } },
+        RevenueFromContractWithCustomerIncludingAssessedTax: { units: { USD: [{ ...row, val: 76047000000 }] } },
+      },
+    };
+    const keys = ['RevenueFromContractWithCustomerExcludingAssessedTax', 'RevenueFromContractWithCustomerIncludingAssessedTax'];
+    expect(extractMetric(facts, keys, 'Y', {}, { maxOf: [keys[0]] })[0].val).toBe(28694000000);
+    const excluded = { 'us-gaap': { RevenueFromContractWithCustomerIncludingAssessedTax: facts['us-gaap'].RevenueFromContractWithCustomerIncludingAssessedTax } };
+    expect(extractMetric(excluded, keys, 'Y', {}, { maxOf: [keys[0]] })[0].val).toBe(76047000000);
+  });
+});
+
+describe('total debt (values in $M from the cache)', () => {
+  const parts = (values: Record<string, number>) => (concept: string) => values[concept];
+
+  test('JNJ 2025: noncurrent + DebtCurrent, LongTermDebt already holds the current maturities', () => {
+    expect(
+      totalDebt(parts({ LongTermDebtNoncurrent: 39438, LongTermDebt: 41438, DebtCurrent: 8500, ShortTermBorrowings: 8495 })),
+    ).toBe(47938);
+  });
+
+  test('T and TSLA 2025: LongTermDebt is not added to DebtCurrent', () => {
+    expect(totalDebt(parts({ LongTermDebt: 134718, DebtCurrent: 9011 }))).toBe(134718);
+    expect(totalDebt(parts({ LongTermDebt: 6584, DebtCurrent: 1569 }))).toBe(6584);
+  });
+
+  test('without a current part the total LongTermDebt is used, plus separate short-term borrowings', () => {
+    expect(totalDebt(parts({ LongTermDebtNoncurrent: 31067, LongTermDebt: 40294 }))).toBe(40294);
+    expect(totalDebt(parts({ LongTermDebtNoncurrent: 100, LongTermDebtCurrent: 10, CommercialPaper: 5 }))).toBe(115);
+    expect(totalDebt(parts({}))).toBeNull();
   });
 });

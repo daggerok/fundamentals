@@ -17,6 +17,7 @@ import {
   normalizeFacts,
   periodLabels,
   staticDataUrl,
+  totalDebt,
   withGrossProfitFallback,
   type ReportingInfo,
 } from './data-utils';
@@ -462,8 +463,16 @@ const CON: Record<string, string[]> = {
     'CashCashEquivalentsAndShortTermInvestments',
     'CashAndCashEquivalents',
   ],
-  shortTermDebt: ['ShortTermBorrowings', 'DebtCurrent', 'ShorttermBorrowings'],
-  longTermDebt: ['LongTermDebt', 'LongTermDebtNoncurrent', 'LongtermBorrowings'],
+  // DebtCurrent = short-term borrowings + current maturities of long-term debt
+  shortTermDebt: [
+    'DebtCurrent',
+    'ShortTermBorrowings',
+    'LongTermDebtCurrent',
+    'CommercialPaper',
+    'ShorttermBorrowings',
+  ],
+  // LongTermDebt includes the current maturities, so the noncurrent part comes first
+  longTermDebt: ['LongTermDebtNoncurrent', 'LongTermDebt', 'LongtermBorrowings'],
   inventory: ['InventoryNet', 'Inventories'],
   receivables: [
     'AccountsReceivableNetCurrent',
@@ -489,6 +498,13 @@ const CON: Record<string, string[]> = {
   rnd: ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'],
   sga: ['SellingGeneralAndAdministrativeExpense'],
 };
+
+/**
+ * Revenue concepts that may each be a subset of the total: the largest one of a filing is the
+ * total. RevenueFromContractWithCustomerIncludingAssessedTax stays out: it adds excise taxes
+ * (PM, STZ report net revenues without them), so it is used only when nothing else is tagged.
+ */
+const REVENUE_TOTALS = CON.revenue.filter((concept) => concept !== 'RevenueFromContractWithCustomerIncludingAssessedTax');
 
 type MetricDef = { key: string; label: string; unit: string; raw?: boolean };
 type SectionDef = {
@@ -823,9 +839,20 @@ function proc(facts: any, mode: Mode, preferUsd: boolean) {
   const primaryCurrency = detectPrimaryCurrency(facts, mode);
   const ex: Record<string, any[]> = {};
   for (const [key, concepts] of Object.entries(CON)) {
-    ex[key] = exM(facts, concepts, mode, { preferUsd, preferredCurrency: primaryCurrency });
+    ex[key] = exM(
+      facts,
+      concepts,
+      mode,
+      { preferUsd, preferredCurrency: primaryCurrency },
+      { maxOf: key === 'revenue' ? REVENUE_TOTALS : [] },
+    );
   }
   ex.grossProfit = withGrossProfitFallback(ex.grossProfit, ex.revenue, ex.costOfRevenue);
+  // Every debt concept on its own: totalDebt combines them without double counting.
+  const debtParts: Record<string, any[]> = {};
+  for (const concept of [...CON.longTermDebt, ...CON.shortTermDebt]) {
+    debtParts[concept] = exM(facts, [concept], mode, { preferUsd, preferredCurrency: primaryCurrency });
+  }
   const allE = Object.values(ex).flat() as any[];
   const source: Record<string, MetricSource> = {};
   for (const [key, rows] of Object.entries(ex)) {
@@ -888,8 +915,6 @@ function proc(facts: any, mode: Mode, preferUsd: boolean) {
         cx = gv('capex', periodKey),
         eq = gv('equity', periodKey),
         ast = gv('assets', periodKey),
-        ltd = gv('longTermDebt', periodKey),
-        std = gv('shortTermDebt', periodKey),
         ca = gv('currentAssets', periodKey),
         cl = gv('currentLiabilities', periodKey),
         sh = gv('sharesOut', periodKey);
@@ -915,7 +940,10 @@ function proc(facts: any, mode: Mode, preferUsd: boolean) {
           break;
         case 'debtToEquity': {
           const currenciesMatch = compatible('longTermDebt', 'shortTermDebt', 'equity');
-          const debt = (ltd || 0) + (std || 0);
+          const debt = totalDebt((concept) => {
+            const row = debtParts[concept]?.find((part) => part._periodKey === periodKey);
+            return typeof row?.val === 'number' && row._currency === currency('equity') ? row.val : undefined;
+          });
           value = currenciesMatch && debt && eq ? debt / eq : null;
           break;
         }

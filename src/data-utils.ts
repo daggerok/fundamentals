@@ -30,6 +30,14 @@ export type CurrencyPreference = {
   preferredCurrency?: string | null;
 };
 
+export type ExtractOptions = {
+  /**
+   * Concepts that are subsets of one another (revenue): for a period the newest filing that
+   * reports any of them wins and its largest value is taken. They rank before the other keys.
+   */
+  maxOf?: string[];
+};
+
 /**
  * Return the taxonomy map from either a raw SEC companyfacts response or the
  * repository's data/fundamentals/{TICKER}.json cache wrapper. SEC companyfacts responses do
@@ -388,6 +396,7 @@ export function extractMetric(
   keys: string[],
   mode: DataMode,
   preference: CurrencyPreference = {},
+  options: ExtractOptions = {},
 ): ExtractedFact[] {
   const candidates: UnitCandidate[] = [];
   for (const [taxonomyName, taxonomy] of taxonomyEntries(facts)) {
@@ -429,11 +438,31 @@ export function extractMetric(
     if (info.fiscal && !fiscal.has(info.key)) fiscal.set(info.key, info.fiscal);
   }
 
-  // Reported values beat derived ones, then the newest filing wins for each actual period.
+  // Reported values beat derived ones. Then the first concept of `keys` that reports the
+  // period wins (aliases are ordered by meaning: NetIncomeLoss before ProfitLoss, basic EPS
+  // before diluted), and within it the newest filing (restated values).
+  // Concepts in `maxOf` come first and compete differently: the newest filing wins and the
+  // largest of its values is taken. Revenue aliases are subsets of one another (ALLY tags fee
+  // revenue as RevenueFromContractWithCustomerExcludingAssessedTax and the total as Revenues).
+  const maxOf = new Set(options.maxOf || []);
+  const priority = (concept: string) => keys.indexOf(concept);
   entries.sort((a, b) => {
     if (a.derived !== b.derived) return Number(a.derived) - Number(b.derived);
+    const aMax = maxOf.has(a.candidate.concept);
+    const bMax = maxOf.has(b.candidate.concept);
+    if (aMax !== bMax) return Number(bMax) - Number(aMax);
+    if (!aMax) {
+      const rank = priority(a.candidate.concept) - priority(b.candidate.concept);
+      if (rank) return rank;
+    }
     const filed = +new Date(b.row.filed || 0) - +new Date(a.row.filed || 0);
     if (filed) return filed;
+    if (aMax) {
+      const filing = filingId(a.row).localeCompare(filingId(b.row));
+      if (filing) return filing;
+      const value = Number(b.row.val) - Number(a.row.val);
+      if (value) return value;
+    }
     // SEC frames generally identify the discrete (not YTD) value.
     return Number(Boolean(b.row.frame)) - Number(Boolean(a.row.frame));
   });
@@ -574,6 +603,32 @@ export function withGrossProfitFallback(
     ];
   });
   return [...grossProfit, ...fallback];
+}
+
+/**
+ * Total debt of one period from the individual debt concepts (value or undefined per concept).
+ * LongTermDebt includes the current maturities and DebtCurrent includes the short-term
+ * borrowings, so the parts are combined without counting either twice:
+ * - LongTermDebtNoncurrent + DebtCurrent
+ * - LongTermDebtNoncurrent + LongTermDebtCurrent + short-term borrowings
+ * - LongTermDebt + short-term borrowings
+ * - otherwise whatever single long-term part exists + short-term borrowings
+ * Short-term borrowings: ShortTermBorrowings, else CommercialPaper, else IFRS ShorttermBorrowings.
+ */
+export function totalDebt(part: (concept: string) => number | undefined): number | null {
+  const borrowings = part('ShortTermBorrowings') ?? part('CommercialPaper') ?? part('ShorttermBorrowings') ?? 0;
+  const noncurrent = part('LongTermDebtNoncurrent');
+  const current = part('DebtCurrent');
+  const currentMaturities = part('LongTermDebtCurrent');
+  const total = part('LongTermDebt');
+  let debt: number;
+  if (noncurrent !== undefined && current !== undefined) debt = noncurrent + current;
+  else if (noncurrent !== undefined && currentMaturities !== undefined) debt = noncurrent + currentMaturities + borrowings;
+  else if (total !== undefined) debt = total + borrowings;
+  else if (noncurrent !== undefined) debt = noncurrent + borrowings;
+  else if (part('LongtermBorrowings') !== undefined) debt = part('LongtermBorrowings')! + borrowings;
+  else debt = current ?? (currentMaturities ?? 0) + borrowings;
+  return debt || null;
 }
 
 function sorted(values: Set<string>): string[] {
