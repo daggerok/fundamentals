@@ -111,3 +111,26 @@ describe('companyfacts localStorage cache', () => {
     expect(main).toMatch(/function cc\(\) \{\n {2}cancelPendingCacheWrite\?\.\(\);/);
   });
 });
+
+describe('state safety', () => {
+  test('beforeunload saves the color palette with the other preferences', () => {
+    const effect = main.slice(main.indexOf("window.addEventListener('beforeunload', onLeave);"));
+    const deps = effect.slice(effect.indexOf('}, ['), effect.indexOf(']);'));
+    expect(deps).toContain('colorTheme');
+  });
+
+  test('search checks after every await that no newer search began', () => {
+    const start = main.indexOf('const search = async');
+    const body = main.slice(start, main.indexOf('\n  };\n', start));
+    expect(body).toContain('const current = searchGuard.begin();');
+    const awaits = body.match(/= await /g)?.length ?? 0;
+    expect(awaits).toBeGreaterThan(0);
+    expect(body.match(/if \(!current\(\)\) return;/g)?.length).toBe(awaits + 1); // + the catch block
+    expect(body).toContain('if (current()) setLoading(false);');
+  });
+
+  test('processed data is derived once from the facts, not stored and recomputed by hand', () => {
+    expect(main).not.toContain('setPd(');
+    expect(main.match(/\bproc\(/g)).toHaveLength(2); // definition + the useMemo
+  });
+});

@@ -21,6 +21,7 @@ import {
   withGrossProfitFallback,
   type ReportingInfo,
 } from './data-utils';
+import { latestOnly } from './request-guard';
 
 type Language = 'en' | 'ru';
 type Mode = 'Y' | 'Q' | 'I';
@@ -1212,8 +1213,6 @@ function App() {
     normalizeColorTheme(prefs.colorTheme),
   );
   const [factsCache, setFactsCache] = useState<any>(cached?.facts || null);
-  const [pd, setPd] = useState<any>(null);
-  const [reporting, setReporting] = useState<ReportingInfo | null>(null);
   const [sug, setSug] = useState<any[]>([]);
   const [showSug, setShowSug] = useState(false);
   const [selIdx, setSelIdx] = useState(-1);
@@ -1225,6 +1224,13 @@ function App() {
   const settingsRef = useRef<HTMLDivElement>(null);
 
   const scale = sliderToScale(scaleSlider);
+  // Processed dashboard data is derived, computed once per facts, mode and currency preference.
+  const pd = useMemo(
+    () => (factsCache ? proc(normalizeFacts(factsCache), mode, preferUsd) : null),
+    [factsCache, mode, preferUsd],
+  );
+  const reporting: ReportingInfo | null = pd?.reporting ?? null;
+  const searchGuard = useMemo(() => latestOnly(), []);
 
   const log = useCallback((msg: string) => {
     console.log(msg);
@@ -1238,9 +1244,6 @@ function App() {
       setCompany(comp);
       setFactsCache(facts);
       setTicker(comp.ticker || prefs.ticker || 'AAPL');
-      const processed = proc(facts, mode, preferUsd);
-      setPd(processed);
-      setReporting(processed.reporting);
       setDataOk(true);
       log(`✅ Restored ${comp.ticker} (cache)`);
     }
@@ -1264,7 +1267,7 @@ function App() {
     };
     window.addEventListener('beforeunload', onLeave);
     return () => window.removeEventListener('beforeunload', onLeave);
-  }, [company, factsCache, ticker, mode, view, dark, scaleSlider, dataSource, preferUsd]);
+  }, [company, factsCache, ticker, mode, view, dark, colorTheme, scaleSlider, dataSource, preferUsd]);
 
   useEffect(() => {
     localStorage.setItem(LS_LANG, lang);
@@ -1287,13 +1290,6 @@ function App() {
     document.body.style.backgroundColor = dark ? surface.darkBg : surface.lightBg;
     document.body.style.color = dark ? surface.darkFg : surface.lightFg;
   }, [dark, colorTheme]);
-
-  useEffect(() => {
-    if (!factsCache) return;
-    const processed = proc(normalizeFacts(factsCache), mode, preferUsd);
-    setPd(processed);
-    setReporting(processed.reporting);
-  }, [mode, factsCache, preferUsd]);
 
   // After tickers load, enable load button focus if input already has a symbol
   useEffect(() => {
@@ -1387,12 +1383,12 @@ function App() {
   }, []);
 
   const search = async (sym: string, opts?: { keepPrevious?: boolean }) => {
+    // Every await below is followed by `if (!current()) return`: a newer search owns the state.
+    const current = searchGuard.begin();
     sym = (sym || '').trim().toUpperCase();
     setError(null);
     if (!opts?.keepPrevious) {
       setCompany(null);
-      setPd(null);
-      setReporting(null);
       setFactsCache(null);
     }
     if (!sym) return;
@@ -1418,14 +1414,12 @@ function App() {
         // CACHE may still have ./data/fundamentals/{TICKER}.json even if ticker map is stubby
         if (dataSource === 'cache') {
           const cachedFile = await loadStaticFacts(sym);
+          if (!current()) return;
           if (cachedFile) {
             setDataOk(true);
             setWwwOk(true);
             setFactsCache(cachedFile.facts);
             setCompany(cachedFile.company);
-            const processed = proc(cachedFile.facts, mode, preferUsd);
-            setPd(processed);
-            setReporting(processed.reporting);
             sc({ facts: cachedFile.facts, company: cachedFile.company });
             log(`${sym} → CIK ${cachedFile.company.cik}`);
             log(`✅ CACHE ./data/fundamentals/${sym}.json`);
@@ -1441,14 +1435,12 @@ function App() {
       // --- CACHE mode: same-origin ./data/fundamentals/{TICKER}.json (options-desk pattern) ---
       if (dataSource === 'cache') {
         const cachedFile = await loadStaticFacts(sym);
+        if (!current()) return;
         if (cachedFile) {
           setDataOk(true);
           setWwwOk(true);
           setFactsCache(cachedFile.facts);
           setCompany(cachedFile.company);
-          const processed = proc(cachedFile.facts, mode, preferUsd);
-          setPd(processed);
-          setReporting(processed.reporting);
           sc({ facts: cachedFile.facts, company: cachedFile.company });
           log(`✅ CACHE ./data/fundamentals/${sym}.json`);
           log('✅ Done');
@@ -1470,27 +1462,27 @@ function App() {
         dataCands,
         `/api/xbrl/companyfacts/CIK${cik}.json`,
       );
+      if (!current()) return;
       setDataOk(true);
       setDataBase(base);
       log(`✅ data proxy: ${base}`);
       if (wwwBase) log(`✅ www proxy: ${wwwBase}`);
       const raw = await res.json();
+      if (!current()) return;
       const facts = normalizeFacts(raw);
       if (!hasUsableFacts(facts)) throw new Error('No usable fact taxonomies in companyfacts');
       setFactsCache(facts);
       const comp = { title: co.title || raw?.entityName, cik, ticker: sym };
       setCompany(comp);
-      const processed = proc(facts, mode, preferUsd);
-      setPd(processed);
-      setReporting(processed.reporting);
       sc({ facts, company: comp });
       log('✅ Done');
     } catch (e: any) {
+      if (!current()) return;
       log(`❌ ${e.message}`);
       setError(e.message);
       cc();
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   };
 
@@ -2229,10 +2221,10 @@ function App() {
                   <button
                     type="button"
                     onClick={() => {
+                      searchGuard.cancel();
+                      setLoading(false);
                       cc();
                       setCompany(null);
-                      setPd(null);
-                      setReporting(null);
                       setFactsCache(null);
                       setDataOk(false);
                       log('cache cleared');
