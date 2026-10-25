@@ -125,6 +125,8 @@ function modeAllows(host: "WWW" | "DATA"): boolean {
 }
 
 Bun.serve({
+  // Loopback only: the relay sends the SEC User-Agent, nobody else on the network may use it.
+  hostname: "127.0.0.1",
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);

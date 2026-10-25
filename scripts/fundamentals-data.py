@@ -160,13 +160,17 @@ def _session():
     return s
 
 
+class SecForbidden(RuntimeError):
+    """SEC answered 403: every further request would be refused too, so the run stops."""
+
+
 def _get_json(session, url: str) -> dict:
     last: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             r = session.get(url, timeout=90)
             if r.status_code == 403:
-                raise RuntimeError(
+                raise SecForbidden(
                     "SEC 403 Forbidden — descriptive User-Agent with contact email required.\n"
                     f'  SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fundamentals-data.py\n'
                     f"Current UA: {UA!r}"
@@ -175,7 +179,7 @@ def _get_json(session, url: str) -> dict:
                 raise FileNotFoundError(f"404 {url}")
             r.raise_for_status()
             return r.json()
-        except FileNotFoundError:
+        except (FileNotFoundError, SecForbidden):
             raise
         except Exception as e:
             last = e
@@ -451,6 +455,7 @@ def main() -> int:
 
     names: dict[str, str] = {}
     fetched = skipped = failed = 0
+    aborted = False
 
     for i, sym in enumerate(queue, start=1):
         if fetched >= MAX_FETCHES:
@@ -490,6 +495,11 @@ def main() -> int:
         except FileNotFoundError:
             _log(f"NO_FACTS [{i}/{len(queue)}] {sym}: 404")
             failed += 1
+        except SecForbidden as e:
+            _log(f"ABORT [{i}/{len(queue)}] {sym}: {e}")
+            failed += 1
+            aborted = True
+            break
         except Exception as e:
             _log(f"ERROR [{i}/{len(queue)}] {sym}: {e}")
             failed += 1
@@ -515,6 +525,9 @@ def main() -> int:
                 f"HINT: coverage incomplete — re-run with MAX_FETCHES={MAX_FETCHES} "
                 f"(or higher) to continue downloading missing tickers"
             )
+    if fetched == 0 and failed:
+        _log("FAILED: nothing fetched")
+        return 1
     return 0
 
 

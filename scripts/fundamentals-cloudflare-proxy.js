@@ -11,7 +11,10 @@
  * DEPLOY (free):
  *   1. https://dash.cloudflare.com → Workers & Pages → Create → Worker.
  *   2. Paste this file, Deploy. You get https://<name>.<you>.workers.dev
- *   3. (Recommended) lock ALLOW_ORIGIN below to your Pages origin.
+ *   3. A fork on another Pages origin changes ALLOW_ORIGIN below.
+ *
+ * LOCKED DOWN: only the two SEC resources the app reads are relayed (the ticker
+ * map and one company's companyfacts), and browsers on other origins get 403.
  *
  * USE FROM THE APP:
  *   - Unified proxy base = your Worker URL (no trailing slash)
@@ -25,8 +28,8 @@
  * =============================================================================
  */
 
-// Lock this to your site in production, e.g. "https://daggerok.github.io".
-const ALLOW_ORIGIN = "*";
+// The GitHub Pages origin of the app; requests from any other browser origin get 403.
+const ALLOW_ORIGIN = "https://daggerok.github.io";
 
 const UA = "Maksim Kostromin daggerok@gmail.com";
 
@@ -35,6 +38,7 @@ function cors() {
     "Access-Control-Allow-Origin": ALLOW_ORIGIN,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "*",
+    Vary: "Origin",
   };
 }
 
@@ -73,20 +77,17 @@ function stripProxyPrefix(pathname) {
   return pathname;
 }
 
-function resolveTarget(pathname, search) {
+const COMPANYFACTS = /^\/api\/xbrl\/companyfacts\/CIK\d{10}\.json$/;
+
+/** Only what the dashboard reads; query strings are not forwarded. */
+function resolveTarget(pathname) {
   const path = stripProxyPrefix(pathname);
 
   if (path === "/api/company_tickers" || path === "/files/company_tickers.json") {
-    return { host: "WWW", target: `https://www.sec.gov/files/company_tickers.json${search}` };
+    return { host: "WWW", target: "https://www.sec.gov/files/company_tickers.json" };
   }
-  if (path.startsWith("/files/")) {
-    return { host: "WWW", target: `https://www.sec.gov${path}${search}` };
-  }
-  if (path.startsWith("/api/")) {
-    return { host: "DATA", target: `https://data.sec.gov${path}${search}` };
-  }
-  if (path.startsWith("/xbrl/")) {
-    return { host: "DATA", target: `https://data.sec.gov${path}${search}` };
+  if (COMPANYFACTS.test(path)) {
+    return { host: "DATA", target: `https://data.sec.gov${path}` };
   }
   return null;
 }
@@ -94,6 +95,14 @@ function resolveTarget(pathname, search) {
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+
+    const origin = request.headers.get("Origin");
+    if (origin && origin !== ALLOW_ORIGIN) {
+      return json({ error: "origin not allowed", origin }, 403);
+    }
+    if (request.method !== "GET" && request.method !== "OPTIONS") {
+      return json({ error: "method not allowed" }, 405);
+    }
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors() });
@@ -113,26 +122,10 @@ export default {
       });
     }
 
-    // Optional generic passthrough: /raw?url=<encoded>
-    if (url.pathname === "/raw") {
-      const target = url.searchParams.get("url");
-      if (!target) return json({ error: "missing url" }, 400);
-      try {
-        const u = new URL(target);
-        if (!["www.sec.gov", "data.sec.gov", "efts.sec.gov"].includes(u.hostname)) {
-          return json({ error: "host not allowed" }, 403);
-        }
-        logProxy("RAW", "/raw", target);
-        return await relay(target);
-      } catch (e) {
-        return json({ error: String(e) }, 400);
-      }
-    }
-
-    const resolved = resolveTarget(url.pathname, url.search);
+    const resolved = resolveTarget(url.pathname);
     if (!resolved) return json({ error: "not found", path: url.pathname }, 404);
 
-    logProxy(resolved.host, url.pathname + url.search, resolved.target);
+    logProxy(resolved.host, url.pathname, resolved.target);
     try {
       return await relay(resolved.target);
     } catch (e) {
