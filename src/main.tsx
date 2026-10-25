@@ -15,7 +15,9 @@ import {
   hasUsableFacts,
   inspectReporting,
   normalizeFacts,
+  periodLabels,
   staticDataUrl,
+  withGrossProfitFallback,
   type ReportingInfo,
 } from './data-utils';
 
@@ -823,6 +825,7 @@ function proc(facts: any, mode: Mode, preferUsd: boolean) {
   for (const [key, concepts] of Object.entries(CON)) {
     ex[key] = exM(facts, concepts, mode, { preferUsd, preferredCurrency: primaryCurrency });
   }
+  ex.grossProfit = withGrossProfitFallback(ex.grossProfit, ex.revenue, ex.costOfRevenue);
   const allE = Object.values(ex).flat() as any[];
   const source: Record<string, MetricSource> = {};
   for (const [key, rows] of Object.entries(ex)) {
@@ -833,28 +836,14 @@ function proc(facts: any, mode: Mode, preferUsd: boolean) {
     };
   }
 
-  const pK = [...new Set(allE.map((row) => row._periodKey).filter(Boolean))];
-  if (mode === 'I') {
-    pK.sort((a, b) => String(a).localeCompare(String(b)));
-  } else {
-    pK.sort((a, b) => {
-      const [ay, af = 'FY'] = String(a).split('-'),
-        [by, bf = 'FY'] = String(b).split('-');
-      if (ay !== by) return Number(ay) - Number(by);
-      const order: Record<string, number> = { Q1: 1, Q2: 2, Q3: 3, FY: 4, Q4: 4 };
-      return (order[af] || 0) - (order[bf] || 0);
-    });
-  }
+  // Keys are period end dates (`${end}|FY` for annual columns in Q mode, `${end}|${start}` in
+  // I mode), so a plain string sort is chronological.
+  const pK = [...new Set(allE.map((row) => row._periodKey).filter(Boolean))].sort();
 
-  const periodLabels = new Map<string, string>();
-  for (const row of allE) {
-    if (row._periodKey && row._periodLabel && !periodLabels.has(row._periodKey)) {
-      periodLabels.set(row._periodKey, row._periodLabel);
-    }
-  }
+  const labelByKey = periodLabels(allE, mode);
   const gv = (key: string, periodKey: any) =>
     ex[key]?.find((row: any) => row._periodKey === periodKey)?.val;
-  const gl = (periodKey: any) => periodLabels.get(String(periodKey)) || String(periodKey);
+  const gl = (periodKey: any) => labelByKey.get(String(periodKey)) || String(periodKey);
   const currency = (key: string) => source[key]?.currency || null;
   const compatible = (...keys: string[]) => {
     const currencies = keys.map(currency).filter(Boolean);

@@ -6,7 +6,9 @@ import {
   hasUsableFacts,
   inspectReporting,
   normalizeFacts,
+  periodLabels,
   staticDataUrl,
+  withGrossProfitFallback,
 } from './data-utils';
 
 function loadFixture(name: string): any | null {
@@ -54,6 +56,7 @@ describe('metric extraction', () => {
           units: {
             TWD: [
               {
+                start: '2024-01-01',
                 end: '2024-12-31',
                 val: 2_894_307_700_000,
                 fy: 2024,
@@ -66,6 +69,7 @@ describe('metric extraction', () => {
             USD: [
               // Comparative rows in one 20-F all carry the filing's fy=2024.
               {
+                start: '2022-01-01',
                 end: '2022-12-31',
                 val: 73_670_400_000,
                 fy: 2024,
@@ -75,6 +79,7 @@ describe('metric extraction', () => {
                 frame: 'CY2022',
               },
               {
+                start: '2023-01-01',
                 end: '2023-12-31',
                 val: 70_598_800_000,
                 fy: 2024,
@@ -83,6 +88,7 @@ describe('metric extraction', () => {
                 filed: '2025-04-17',
               },
               {
+                start: '2024-01-01',
                 end: '2024-12-31',
                 val: 88_268_000_000,
                 fy: 2024,
@@ -93,6 +99,7 @@ describe('metric extraction', () => {
               },
               // An older duplicate for 2023 must not win.
               {
+                start: '2023-01-01',
                 end: '2023-12-31',
                 val: 1,
                 fy: 2023,
@@ -109,9 +116,14 @@ describe('metric extraction', () => {
 
     const rows = extractMetric(facts, ['Revenue'], 'Y');
     expect(Object.fromEntries(rows.map((row) => [row._periodKey, row.val]))).toEqual({
-      '2022': 73_670_400_000,
-      '2023': 70_598_800_000,
-      '2024': 88_268_000_000,
+      '2022-12-31': 73_670_400_000,
+      '2023-12-31': 70_598_800_000,
+      '2024-12-31': 88_268_000_000,
+    });
+    expect(Object.fromEntries(periodLabels(rows, 'Y'))).toEqual({
+      '2022-12-31': '2022',
+      '2023-12-31': '2023',
+      '2024-12-31': '2024',
     });
   });
 
@@ -144,8 +156,8 @@ describe('metric extraction', () => {
     expect(eps.length).toBeGreaterThanOrEqual(5);
     expect(interimRevenue.length).toBeGreaterThanOrEqual(1);
     expect(interimRevenue.every((row) => row.form === '6-K')).toBe(true);
-    expect(revenue.find((row) => row._periodKey === '2024')?.val).toBe(88_268_000_000);
-    expect(localRevenue.find((row) => row._periodKey === '2024')?.val).toBe(
+    expect(revenue.find((row) => row._periodKey === '2024-12-31')?.val).toBe(88_268_000_000);
+    expect(localRevenue.find((row) => row._periodKey === '2024-12-31')?.val).toBe(
       2_894_307_700_000,
     );
   });
@@ -280,7 +292,7 @@ describe('metric extraction', () => {
     expect(extractMetric(interim, ['Revenue'], 'Q')).toEqual([]);
     const rows = extractMetric(interim, ['Revenue'], 'I');
     expect(rows).toHaveLength(1);
-    expect(rows[0]._periodKey).toBe('2024-06-30');
+    expect(rows[0]._periodKey).toBe('2024-06-30|2024-01-01');
     expect(rows[0]._periodLabel).toBe('2024 H1');
     expect(inspectReporting(interim, rows)).toEqual({
       availableTaxonomies: ['ifrs-full'],
@@ -299,6 +311,7 @@ describe('metric extraction', () => {
           units: {
             USD: [
               {
+                start: '2024-01-01',
                 end: '2024-12-31',
                 val: 100,
                 fy: 2024,
@@ -308,14 +321,14 @@ describe('metric extraction', () => {
                 frame: 'CY2024',
               },
               {
+                start: '2025-01-01',
                 end: '2025-03-31',
                 val: 30,
                 fy: 2025,
                 fp: 'Q1',
                 form: '10-Q',
                 filed: '2025-05-01',
-                // Calendar frame differs from the issuer's fiscal label.
-                frame: 'CY2024Q4',
+                frame: 'CY2025Q1',
               },
             ],
           },
@@ -324,11 +337,180 @@ describe('metric extraction', () => {
     };
 
     expect(extractMetric(facts, ['Revenues'], 'Y').map((row) => row._periodKey)).toEqual([
-      '2024',
+      '2024-12-31',
     ]);
-    expect(extractMetric(facts, ['Revenues'], 'Q').map((row) => row._periodKey).sort()).toEqual([
-      '2024-FY',
-      '2025-Q1',
+    const quarterly = extractMetric(facts, ['Revenues'], 'Q');
+    expect(quarterly.map((row) => row._periodKey).sort()).toEqual(['2024-12-31|FY', '2025-03-31']);
+    expect(Object.fromEntries(periodLabels(quarterly, 'Q'))).toEqual({
+      '2024-12-31|FY': '2024 FY',
+      '2025-03-31': '2025 Q1',
+    });
+  });
+});
+
+const usGaap = (concept: string, rows: object[], unit = 'USD') => ({
+  'us-gaap': { [concept]: { units: { [unit]: rows } } },
+});
+const byKey = (rows: Array<{ _periodKey: string; val?: unknown }>) =>
+  Object.fromEntries(rows.map((row) => [row._periodKey, row.val]));
+
+describe('period keys come from the fact dates, not the filing fy/fp (real SEC rows)', () => {
+  // AAPL revenue: the fy 2026 Q1 10-Q also reports the prior-year quarter, and the Q3 10-Q a
+  // 9-month total, all under fy 2026.
+  const aaplRevenue = usGaap('RevenueFromContractWithCustomerExcludingAssessedTax', [
+    { start: '2024-09-29', end: '2025-09-27', val: 416161000000, accn: '0000320193-25-000079', fy: 2025, fp: 'FY', form: '10-K', filed: '2025-10-31', frame: 'CY2025' },
+    { start: '2024-09-29', end: '2024-12-28', val: 124300000000, accn: '0000320193-26-000006', fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-01-30', frame: 'CY2024Q4' },
+    { start: '2025-09-28', end: '2025-12-27', val: 143756000000, accn: '0000320193-26-000006', fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-01-30', frame: 'CY2025Q4' },
+    { start: '2024-09-29', end: '2025-06-28', val: 313695000000, accn: '0000320193-26-000020', fy: 2026, fp: 'Q3', form: '10-Q', filed: '2026-07-31' },
+    { start: '2025-03-30', end: '2025-06-28', val: 94036000000, accn: '0000320193-26-000020', fy: 2026, fp: 'Q3', form: '10-Q', filed: '2026-07-31', frame: 'CY2025Q2' },
+    { start: '2025-09-28', end: '2026-06-27', val: 364357000000, accn: '0000320193-26-000020', fy: 2026, fp: 'Q3', form: '10-Q', filed: '2026-07-31' },
+    { start: '2026-03-29', end: '2026-06-27', val: 109417000000, accn: '0000320193-26-000020', fy: 2026, fp: 'Q3', form: '10-Q', filed: '2026-07-31', frame: 'CY2026Q2' },
+  ]);
+
+  test('AAPL: the fiscal quarter shows its own 3-month value, comparatives and YTD stay out', () => {
+    const rows = extractMetric(aaplRevenue, ['RevenueFromContractWithCustomerExcludingAssessedTax'], 'Q');
+    expect(byKey(rows)).toEqual({
+      '2025-09-27|FY': 416161000000,
+      '2024-12-28': 124300000000,
+      '2025-12-27': 143756000000,
+      '2025-06-28': 94036000000,
+      '2026-06-27': 109417000000,
+    });
+    const labels = periodLabels(rows, 'Q');
+    expect(labels.get('2025-12-27')).toBe('2026 Q1');
+    expect(labels.get('2024-12-28')).toBe('2025 Q1');
+    expect(labels.get('2026-06-27')).toBe('2026 Q3');
+    expect(labels.get('2025-09-27|FY')).toBe('2025 FY');
+  });
+
+  test('AAPL: Q2 and Q3 operating cash flow are differences of year-to-date totals', () => {
+    const ocf = usGaap('NetCashProvidedByUsedInOperatingActivities', [
+      { start: '2025-09-28', end: '2025-12-27', val: 53925000000, accn: '0000320193-26-000006', fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-01-30' },
+      { start: '2025-09-28', end: '2026-03-28', val: 82627000000, accn: '0000320193-26-000013', fy: 2026, fp: 'Q2', form: '10-Q', filed: '2026-05-01' },
+      { start: '2025-09-28', end: '2026-06-27', val: 116996000000, accn: '0000320193-26-000020', fy: 2026, fp: 'Q3', form: '10-Q', filed: '2026-07-31' },
     ]);
+    const rows = extractMetric(ocf, ['NetCashProvidedByUsedInOperatingActivities'], 'Q');
+    expect(byKey(rows)).toEqual({
+      '2025-12-27': 53925000000,
+      '2026-03-28': 28702000000,
+      '2026-06-27': 34369000000,
+    });
+    expect(rows.map((row) => row._derived)).toEqual([false, true, true]);
+  });
+
+  test('per-share values are never derived from year-to-date differences', () => {
+    const eps = usGaap(
+      'EarningsPerShareDiluted',
+      [
+        { start: '2025-09-28', end: '2025-12-27', val: 2.84, accn: '0000320193-26-000006', fy: 2026, fp: 'Q1', form: '10-Q', filed: '2026-01-30' },
+        { start: '2025-09-28', end: '2026-03-28', val: 4.5, accn: '0000320193-26-000013', fy: 2026, fp: 'Q2', form: '10-Q', filed: '2026-05-01' },
+      ],
+      'USD/shares',
+    );
+    expect(byKey(extractMetric(eps, ['EarningsPerShareDiluted'], 'Q'))).toEqual({ '2025-12-27': 2.84 });
+  });
+
+  test('CRWD: a filing tagged with the wrong fy does not mislabel or merge quarters', () => {
+    // CRWD tagged its fiscal 2026 Q1 10-Q (quarter ending 2025-04-30) as fy 2025, like fiscal 2025 Q1.
+    const crwd = usGaap('RevenueFromContractWithCustomerIncludingAssessedTax', [
+      { start: '2023-02-01', end: '2023-04-30', val: 692580000, accn: '0001535527-24-000013', fy: 2025, fp: 'Q1', form: '10-Q', filed: '2024-06-05', frame: 'CY2023Q1' },
+      { start: '2024-02-01', end: '2024-04-30', val: 921036000, accn: '0001535527-24-000013', fy: 2025, fp: 'Q1', form: '10-Q', filed: '2024-06-05' },
+      { start: '2024-02-01', end: '2024-07-31', val: 1884908000, accn: '0001535527-24-000020', fy: 2025, fp: 'Q2', form: '10-Q', filed: '2024-08-29' },
+      { start: '2024-05-01', end: '2024-07-31', val: 963872000, accn: '0001535527-24-000020', fy: 2025, fp: 'Q2', form: '10-Q', filed: '2024-08-29' },
+      { start: '2024-02-01', end: '2025-01-31', val: 3953624000, accn: '0001535527-26-000010', fy: 2026, fp: 'FY', form: '10-K', filed: '2026-03-05', frame: 'CY2024' },
+      { start: '2024-02-01', end: '2024-04-30', val: 921036000, accn: '0001535527-25-000019', fy: 2025, fp: 'Q1', form: '10-Q', filed: '2025-06-04', frame: 'CY2024Q1' },
+      { start: '2025-02-01', end: '2025-04-30', val: 1103434000, accn: '0001535527-25-000019', fy: 2025, fp: 'Q1', form: '10-Q', filed: '2025-06-04' },
+    ]);
+    const rows = extractMetric(crwd, ['RevenueFromContractWithCustomerIncludingAssessedTax'], 'Q');
+    expect(byKey(rows)['2025-04-30']).toBe(1103434000);
+    expect(byKey(rows)['2024-04-30']).toBe(921036000);
+    expect(Object.fromEntries(periodLabels(rows, 'Q'))).toEqual({
+      '2023-04-30': '2024 Q1',
+      '2024-04-30': '2025 Q1',
+      '2024-07-31': '2025 Q2',
+      '2025-01-31|FY': '2025 FY',
+      '2025-04-30': '2026 Q1',
+    });
+  });
+
+  test('6-K: 3-month and year-to-date values ending on the same date stay apart', () => {
+    // ASM (Avino) 6-K for the quarter ending 2025-06-30, revenue and the balance sheet.
+    const asm = {
+      'us-gaap': {
+        Revenues: {
+          units: {
+            USD: [
+              { start: '2025-01-01', end: '2025-06-30', val: 40641000, accn: '0001477932-25-005795', fy: 2025, fp: 'Q2', form: '6-K', filed: '2025-08-13' },
+              { start: '2025-04-01', end: '2025-06-30', val: 21805000, accn: '0001477932-25-005795', fy: 2025, fp: 'Q2', form: '6-K', filed: '2025-08-13' },
+            ],
+          },
+        },
+        Assets: {
+          units: { USD: [{ end: '2025-06-30', val: 1, accn: '0001477932-25-005795', fy: 2025, fp: 'Q2', form: '6-K', filed: '2025-08-13' }] },
+        },
+      },
+    };
+    expect(byKey(extractMetric(asm, ['Revenues'], 'I'))).toEqual({
+      '2025-06-30|2025-01-01': 40641000,
+      '2025-06-30|2025-04-01': 21805000,
+    });
+    // The balance sheet belongs to both columns.
+    expect(Object.keys(byKey(extractMetric(asm, ['Assets'], 'I'))).sort()).toEqual([
+      '2025-06-30|2025-01-01',
+      '2025-06-30|2025-04-01',
+    ]);
+  });
+
+  test('annual mode keeps only 52/53-week durations and labels by the fiscal year', () => {
+    // ABBV tags GrossProfit in its 10-K only for the fourth quarter.
+    const abbv = {
+      'us-gaap': {
+        GrossProfit: {
+          units: { USD: [{ start: '2025-10-01', end: '2025-12-31', val: 12066000000, accn: '0001551152-26-000008', fy: 2025, fp: 'FY', form: '10-K', filed: '2026-02-20' }] },
+        },
+        RevenueFromContractWithCustomerExcludingAssessedTax: {
+          units: { USD: [{ start: '2025-01-01', end: '2025-12-31', val: 61160000000, accn: '0001551152-26-000008', fy: 2025, fp: 'FY', form: '10-K', filed: '2026-02-20' }] },
+        },
+        CostOfGoodsAndServicesSold: {
+          units: { USD: [{ start: '2025-01-01', end: '2025-12-31', val: 18204000000, accn: '0001551152-26-000008', fy: 2025, fp: 'FY', form: '10-K', filed: '2026-02-20' }] },
+        },
+      },
+    };
+    const grossProfit = extractMetric(abbv, ['GrossProfit'], 'Y');
+    expect(grossProfit).toEqual([]);
+    const revenue = extractMetric(abbv, ['RevenueFromContractWithCustomerExcludingAssessedTax'], 'Y');
+    const cost = extractMetric(abbv, ['CostOfGoodsAndServicesSold'], 'Y');
+    expect(byKey(withGrossProfitFallback(grossProfit, revenue, cost))).toEqual({ '2025-12-31': 42956000000 });
+  });
+});
+
+describe('period keys on the repository cache', () => {
+  test('AAPL and NVDA quarters match the reported quarters', () => {
+    const aapl = loadFixture('AAPL');
+    const nvda = loadFixture('NVDA');
+    if (!aapl || !nvda) return;
+    const revenue = ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues'];
+    const aaplQ = extractMetric(normalizeFacts(aapl), revenue, 'Q');
+    const nvdaQ = extractMetric(normalizeFacts(nvda), revenue, 'Q');
+    const valueOf = (rows: any[], label: string) => {
+      const labels = periodLabels(rows, 'Q');
+      return rows.find((row) => labels.get(row._periodKey) === label)?.val;
+    };
+    expect(valueOf(aaplQ, '2026 Q1')).toBe(143756000000);
+    expect(valueOf(aaplQ, '2026 Q3')).toBe(109417000000);
+    expect(valueOf(nvdaQ, '2027 Q2')).toBe(96221000000);
+  });
+
+  test('WMT: revenue and assets of one fiscal year share one annual column', () => {
+    const doc = loadFixture('WMT');
+    if (!doc) return;
+    const facts = normalizeFacts(doc);
+    const revenue = extractMetric(facts, ['RevenueFromContractWithCustomerExcludingAssessedTax', 'Revenues'], 'Y');
+    const assets = extractMetric(facts, ['Assets'], 'Y');
+    const labels = periodLabels([...revenue, ...assets], 'Y');
+    expect(labels.get('2026-01-31')).toBe('2026');
+    expect(revenue.find((row) => row._periodKey === '2026-01-31')?.val).toBe(706413000000);
+    expect(assets.some((row) => row._periodKey === '2026-01-31')).toBe(true);
+    expect(new Set(labels.values()).size).toBe(labels.size);
   });
 });
