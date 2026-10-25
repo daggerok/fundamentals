@@ -75,6 +75,7 @@ MODE=data PORT=8012 bun ./scripts/fundamentals-local-proxy.ts &
 ### Вариант C — Cloudflare Worker (hosted GitHub Pages)
 
 См. `scripts/fundamentals-cloudflare-proxy.js` — SEC-релей с CORS + User-Agent.  
+Воркер отдаёт только `company_tickers.json` и `companyfacts/CIK##########.json` и только для origin `https://daggerok.github.io` (форк меняет `ALLOW_ORIGIN`). Локальный Bun-прокси слушает только `127.0.0.1`.  
 В UI (Settings ⚙) укажите base URL воркера; app также умеет unified base.
 
 ---
