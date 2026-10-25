@@ -24,6 +24,8 @@ jobs:
             ${{ runner.os }}-bun-
       - run: bun install -E
       - run: bun run test
+      # Type gate (ADR 0003). jsx is passed here: tsconfig.json stays as committed.
+      - run: bunx -p typescript@5.9.3 tsc -p tsconfig.json --noEmit --jsx react
       - run: python3 -m py_compile scripts/fundamentals-data.py
       - run: node --check scripts/fundamentals-cloudflare-proxy.js
       - run: bun build ./scripts/fundamentals-local-proxy.ts --outdir=/tmp/fundamentals-local-proxy-check --target=bun
