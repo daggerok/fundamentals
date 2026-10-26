@@ -196,6 +196,8 @@ SKIP_FRESH_HOURS=0 MAX_FETCHES=10 TICKERS="AAPL" uv run python scripts/fundament
 bun run build   # ncp → dist/data/
 ```
 
+Predecessor CIKs: a ticker that moved to a new CIK in a reorganization (`PREDECESSOR_CIKS` in `scripts/fundamentals-data.py`, today only XOM -> old CIK 34088) also gets the old CIK's companyfacts merged into its cache file, a period reported by both resolved to the newer filing. LIVE mode still reads only the current CIK.
+
 `MAX_FETCHES` only caps **successful writes this run**. Re-run to continue covering the ~9k SEC ticker map (missing first). Fresh files (`SKIP_FRESH_HOURS`, default 24h) are skipped automatically.
 
 
