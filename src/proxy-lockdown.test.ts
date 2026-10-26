@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import worker from '../scripts/fundamentals-cloudflare-proxy.js';
+import { withTestDir } from './test-dir';
 
 const PAGES = 'https://daggerok.github.io';
 const realFetch = globalThis.fetch;
@@ -54,17 +55,18 @@ describe('Cloudflare Worker relays only what the app reads', () => {
 
 /**
  * Run fundamentals-data.py main() for TICKERS="T1 T2 T3" against a fake SEC session: the first `ok` companyfacts
- * requests answer 200 with a usable payload, every later one answers 403. SEC is never contacted.
+ * requests answer 200 with a usable payload, every later one answers 403. SEC is never contacted; DATA_DIR is a
+ * fresh folder under the gitignored .test-tmp/, removed afterwards.
  */
 function runFetcher(ok: number): { rc: number; calls: number; written: string[] } {
   const script = fileURLToPath(new URL('../scripts/fundamentals-data.py', import.meta.url));
   const code = [
-    'import importlib.util, json, os, sys, tempfile, types',
+    'import importlib.util, json, os, sys, types',
     'from pathlib import Path',
     'sys.modules.setdefault("requests", types.ModuleType("requests"))',
     'spec = importlib.util.spec_from_file_location("fd", sys.argv[1])',
     'fd = importlib.util.module_from_spec(spec); spec.loader.exec_module(fd)',
-    'fd.DATA_DIR = Path(tempfile.mkdtemp())',
+    'fd.DATA_DIR = Path(sys.argv[3])',
     'fd.TICKERS_PATH = fd.DATA_DIR / "company_tickers.json"',
     'fd.INDEX_PATH = fd.DATA_DIR / "index.json"',
     'fd.REQUEST_SLEEP = 0',
@@ -87,7 +89,7 @@ function runFetcher(ok: number): { rc: number; calls: number; written: string[] 
     'written = sorted(p.stem for p in fd.DATA_DIR.glob("T*.json"))',
     'print(json.dumps({"rc": rc, "calls": len(calls), "written": written}))',
   ].join('\n');
-  const out = execFileSync('python3', ['-c', code, script, String(ok)], { encoding: 'utf8' });
+  const out = withTestDir('fetcher-403', (dir) => execFileSync('python3', ['-c', code, script, String(ok), dir], { encoding: 'utf8' }));
   return JSON.parse(out.trim().split('\n').pop()!);
 }
 
