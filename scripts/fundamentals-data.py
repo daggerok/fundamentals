@@ -161,7 +161,7 @@ def _session():
 
 
 class SecForbidden(RuntimeError):
-    """SEC answered 403: every further request would be refused too, so the run stops."""
+    """SEC answered 403: every further request would be refused too, so the run stops and main() returns 1."""
 
 
 def _get_json(session, url: str) -> dict:
@@ -525,6 +525,11 @@ def main() -> int:
                 f"HINT: coverage incomplete — re-run with MAX_FETCHES={MAX_FETCHES} "
                 f"(or higher) to continue downloading missing tickers"
             )
+    if aborted:
+        # Any 403 fails the run, even after some tickers were written: the "Update SEC data" workflow then
+        # skips its commit step, so a partial refresh never lands in git.
+        _log(f"FAILED: SEC 403 after {fetched} write(s); exit 1 so the workflow commits nothing")
+        return 1
     if fetched == 0 and failed:
         _log("FAILED: nothing fetched")
         return 1
