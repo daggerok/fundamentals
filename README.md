@@ -163,7 +163,8 @@ Same pattern as [options-desk](https://github.com/daggerok/options-desk):
 uv run python scripts/fundamentals-data.py
 
 SEC blocks generic User-Agents (HTTP 403). The script defaults to a descriptive
-contact UA. Override if needed:
+contact UA. On any 403 it stops and exits 1, so the "Update SEC data" workflow
+commits nothing (no partial refresh). Override if needed:
 
 ```bash
 SEC_USER_AGENT="Your Name you@example.com" uv run python scripts/fundamentals-data.py

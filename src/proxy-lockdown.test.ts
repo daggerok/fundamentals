@@ -52,32 +52,55 @@ describe('Cloudflare Worker relays only what the app reads', () => {
   });
 });
 
+/**
+ * Run fundamentals-data.py main() for TICKERS="T1 T2 T3" against a fake SEC session: the first `ok` companyfacts
+ * requests answer 200 with a usable payload, every later one answers 403. SEC is never contacted.
+ */
+function runFetcher(ok: number): { rc: number; calls: number; written: string[] } {
+  const script = fileURLToPath(new URL('../scripts/fundamentals-data.py', import.meta.url));
+  const code = [
+    'import importlib.util, json, os, sys, tempfile, types',
+    'from pathlib import Path',
+    'sys.modules.setdefault("requests", types.ModuleType("requests"))',
+    'spec = importlib.util.spec_from_file_location("fd", sys.argv[1])',
+    'fd = importlib.util.module_from_spec(spec); spec.loader.exec_module(fd)',
+    'fd.DATA_DIR = Path(tempfile.mkdtemp())',
+    'fd.TICKERS_PATH = fd.DATA_DIR / "company_tickers.json"',
+    'fd.INDEX_PATH = fd.DATA_DIR / "index.json"',
+    'fd.REQUEST_SLEEP = 0',
+    'ok = int(sys.argv[2])',
+    'tickers = {str(i): {"cik_str": 1000 + i, "ticker": f"T{i}", "title": "x" * 200} for i in range(60)}',
+    'fd.TICKERS_PATH.write_text(json.dumps(tickers))',
+    'rows = [{"end": f"{y}-12-31", "val": y, "form": "10-K", "fy": y, "fp": "FY", "filed": f"{y + 1}-02-01"} for y in range(1900, 2000)]',
+    'facts = {"entityName": "x", "facts": {"us-gaap": {"NetIncomeLoss": {"units": {"USD": rows}}}}}',
+    'calls = []',
+    'class Res:',
+    '    def __init__(self, status): self.status_code = status',
+    '    def raise_for_status(self): pass',
+    '    def json(self): return facts',
+    'class Session:',
+    '    def get(self, url, timeout=None):',
+    '        calls.append(url); return Res(200 if len(calls) <= ok else 403)',
+    'fd._session = lambda: Session()',
+    'os.environ["TICKERS"] = "T1 T2 T3"',
+    'rc = fd.main()',
+    'written = sorted(p.stem for p in fd.DATA_DIR.glob("T*.json"))',
+    'print(json.dumps({"rc": rc, "calls": len(calls), "written": written}))',
+  ].join('\n');
+  const out = execFileSync('python3', ['-c', code, script, String(ok)], { encoding: 'utf8' });
+  return JSON.parse(out.trim().split('\n').pop()!);
+}
+
 describe('fundamentals-data.py stops on SEC 403', () => {
   test('one 403 aborts the run without retries and the exit code is 1', () => {
-    const script = fileURLToPath(new URL('../scripts/fundamentals-data.py', import.meta.url));
-    const code = [
-      'import importlib.util, json, os, sys, tempfile, types',
-      'from pathlib import Path',
-      'sys.modules.setdefault("requests", types.ModuleType("requests"))',
-      'spec = importlib.util.spec_from_file_location("fd", sys.argv[1])',
-      'fd = importlib.util.module_from_spec(spec); spec.loader.exec_module(fd)',
-      'fd.DATA_DIR = Path(tempfile.mkdtemp())',
-      'fd.TICKERS_PATH = fd.DATA_DIR / "company_tickers.json"',
-      'fd.INDEX_PATH = fd.DATA_DIR / "index.json"',
-      'fd.REQUEST_SLEEP = 0',
-      'tickers = {str(i): {"cik_str": 1000 + i, "ticker": f"T{i}", "title": "x" * 200} for i in range(60)}',
-      'fd.TICKERS_PATH.write_text(json.dumps(tickers))',
-      'calls = []',
-      'class Res: status_code = 403',
-      'class Session:',
-      '    def get(self, url, timeout=None):',
-      '        calls.append(url); return Res()',
-      'fd._session = lambda: Session()',
-      'os.environ["TICKERS"] = "T1 T2 T3"',
-      'rc = fd.main()',
-      'print(json.dumps({"rc": rc, "calls": len(calls)}))',
-    ].join('\n');
-    const out = execFileSync('python3', ['-c', code, script], { encoding: 'utf8' });
-    expect(JSON.parse(out.trim().split('\n').pop()!)).toEqual({ rc: 1, calls: 1 });
+    expect(runFetcher(0)).toEqual({ rc: 1, calls: 1, written: [] });
+  });
+
+  test('a 403 after some tickers were fetched still exits 1, so the workflow commits nothing', () => {
+    expect(runFetcher(1)).toEqual({ rc: 1, calls: 2, written: ['T1'] });
+  });
+
+  test('a run without a 403 exits 0', () => {
+    expect(runFetcher(3)).toEqual({ rc: 0, calls: 3, written: ['T1', 'T2', 'T3'] });
   });
 });
