@@ -31,6 +31,8 @@ out
 .DS_Store
 .vscode/
 workspace-*
+# scratch folder of bun test (src/test-dir.ts), never the system temp dir
+.test-tmp/
 SCRATCHPAD.md
 package-lock.json
 *.tmp

@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { type DataMode, detectPrimaryCurrency, extractMetric, normalizeFacts } from './data-utils';
+import { withTestDir } from './test-dir';
 
 // The static files are trimmed by scripts/fundamentals-data.py trim_facts (plan 04-4.2).
 // These tests run that exact Python function on real cached companyfacts and check that
@@ -95,11 +96,11 @@ describe('write_ticker_cache writes only on a real change', () => {
     const file = fileURLToPath(new URL('../data/fundamentals/AAPL.json', import.meta.url));
     if (!existsSync(file)) return;
     const code = [
-      'import importlib.util, json, sys, tempfile, time',
+      'import importlib.util, json, sys, time',
       'from pathlib import Path',
       'spec = importlib.util.spec_from_file_location("fd", sys.argv[1])',
       'fd = importlib.util.module_from_spec(spec); spec.loader.exec_module(fd)',
-      'fd.DATA_DIR = Path(tempfile.mkdtemp())',
+      'fd.DATA_DIR = Path(sys.argv[3])',
       'doc = json.load(open(sys.argv[2], encoding="utf-8"))',
       'raw = {"entityName": doc.get("entityName"), "facts": doc["facts"]}',
       'meta = {"cik": doc["cik"], "title": doc.get("title")}',
@@ -110,7 +111,12 @@ describe('write_ticker_cache writes only on a real change', () => {
       'fd.write_ticker_cache("AAPL", meta, raw); third = p.read_text()',
       'print(json.dumps({"same": first == second, "changed": third != first}))',
     ].join('\n');
-    const out = JSON.parse(execFileSync('python3', ['-c', code, script, file], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+    // DATA_DIR is a fresh folder under the gitignored .test-tmp/, removed afterwards (never the system temp dir).
+    const out = JSON.parse(
+      withTestDir('write-cache', (dir) =>
+        execFileSync('python3', ['-c', code, script, file, dir], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }),
+      ),
+    );
     expect(out).toEqual({ same: true, changed: true });
   });
 });
