@@ -118,6 +118,75 @@ def trim_facts(facts: dict) -> dict:
     return out
 
 
+# Hand-kept list: ticker -> older CIKs whose companyfacts hold the ticker's earlier history.
+# A reorganization moves a ticker to a new CIK while SEC keeps the old filings under the old one.
+# XOM: on ~2026-07-01 Exxon Mobil Corporation (CIK 34088) became a subsidiary of the new holding company
+# ExxonMobil Holdings Corp (CIK 2115436); SEC's ticker map now points XOM to 2115436, which has one 10-Q,
+# while every earlier 10-K and 10-Q stays under 34088.
+PREDECESSOR_CIKS: dict[str, list[str]] = {
+    "XOM": ["0000034088"],
+}
+
+
+def _period_key(row: dict) -> tuple[str, str, str]:
+    return (str(row.get("start") or ""), str(row.get("end") or ""), str(row.get("form") or ""))
+
+
+def _rows(units: dict, unit: str) -> list[dict]:
+    rows = units.get(unit)
+    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+
+
+def _newest_filed(rows: list) -> tuple[str, str]:
+    return max((str(r.get("filed") or ""), str(r.get("accn") or "")) for r in rows)
+
+
+def merge_facts(current: dict, predecessors: list[dict]) -> dict:
+    """Merge predecessor companyfacts `facts` into the current record's `facts` (same shape, nothing trimmed).
+
+    Rows are grouped by taxonomy, concept, unit, period (start, end) and form. A group reported by only one
+    record keeps that record's rows; a group reported by several keeps the rows of the record with the newest
+    filing for it (ties go to the current record), so restatements resolve like the dashboard does: newest wins.
+    """
+    sources = [current] + list(predecessors)
+    out: dict = {}
+    taxonomies = list(dict.fromkeys(t for src in sources for t in src if isinstance(src.get(t), dict)))
+    for taxonomy in taxonomies:
+        records = [src.get(taxonomy) if isinstance(src.get(taxonomy), dict) else {} for src in sources]
+        merged_concepts: dict = {}
+        for concept in dict.fromkeys(c for rec in records for c in rec):
+            facts = [rec.get(concept) for rec in records]
+            base = next((f for f in facts if isinstance(f, dict)), None)
+            if base is None:
+                continue
+            units_per_record = [f.get("units") if isinstance(f, dict) and isinstance(f.get("units"), dict) else {} for f in facts]
+            units_out: dict = {}
+            for unit in dict.fromkeys(u for units in units_per_record for u in units):
+                # period key -> per record rows (index 0 = current record)
+                groups: dict[tuple[str, str, str], list[list]] = {}
+                for idx, units in enumerate(units_per_record):
+                    for row in _rows(units, unit):
+                        groups.setdefault(_period_key(row), [[] for _ in sources])[idx].append(row)
+                winner: dict[tuple[str, str, str], int] = {}
+                for key, per_record in groups.items():
+                    present = [i for i, rows in enumerate(per_record) if rows]
+                    # tie on the newest filing -> the lower index wins (the current record first)
+                    winner[key] = max(present, key=lambda i: (_newest_filed(per_record[i]), -i))
+                # Oldest history first: predecessor rows (last predecessor first), then the current record's rows.
+                kept = [
+                    row
+                    for idx in reversed(range(len(sources)))
+                    for row in _rows(units_per_record[idx], unit)
+                    if winner[_period_key(row)] == idx
+                ]
+                if kept:
+                    units_out[unit] = kept
+            merged_concepts[concept] = {**base, "units": units_out}
+        if merged_concepts:
+            out[taxonomy] = merged_concepts
+    return out
+
+
 FORCE_TICKERS_REFRESH = os.environ.get("FORCE_TICKERS_REFRESH", "").lower() in (
     "1", "true", "yes", "on",
 )
@@ -303,9 +372,13 @@ def build_work_queue(tmap: dict[str, dict]) -> tuple[list[str], int, int, int]:
     return queue, len(missing_ordered), len(stale_syms), fresh
 
 
+def _facts_of(raw: dict) -> dict:
+    return raw.get("facts") if isinstance(raw.get("facts"), dict) else raw
+
+
 def write_ticker_cache(symbol: str, meta: dict, raw: dict) -> Path:
     path = DATA_DIR / f"{symbol}.json"
-    facts = trim_facts(raw.get("facts") if isinstance(raw.get("facts"), dict) else raw)
+    facts = trim_facts(_facts_of(raw))
     payload = {
         "symbol": symbol,
         "ticker": symbol,
@@ -488,6 +561,12 @@ def main() -> int:
             if REQUEST_SLEEP > 0:
                 time.sleep(REQUEST_SLEEP)
             raw = _get_json(session, url)
+            for old_cik in PREDECESSOR_CIKS.get(sym, []):
+                _log(f"FETCH [{i}/{len(queue)}] {sym} predecessor CIK{old_cik}")
+                if REQUEST_SLEEP > 0:
+                    time.sleep(REQUEST_SLEEP)
+                old = _get_json(session, SEC_FACTS_URL.format(cik=old_cik))
+                raw = {**raw, "facts": merge_facts(_facts_of(raw), [_facts_of(old)])}
             out = write_ticker_cache(sym, meta, raw)
             fetched += 1
             names[sym] = meta.get("title") or raw.get("entityName") or sym
