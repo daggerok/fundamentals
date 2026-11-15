@@ -67,21 +67,10 @@ describe('currency preference UI', () => {
 });
 
 describe('SEC cache schedule', () => {
-  test('uses the requested daily stagger and half-second request delay', () => {
-    const crons = [
-      '0 0-3 * * 0-6',
-      '1 4-7 * * 0-6',
-      '2 8-11 * * 0-6',
-      '3 12-15 * * 0-6',
-      '5 16-19 * * 0-6',
-      '8 20-23 * * 0-6',
-      '13 0-23 * * 0-6',
-      '21 0-23 * * 0-6',
-      '34 0-23 * * 0-6',
-      '45 0-23 * * 0-6',
-      '55 0-23 * * 0-6',
-    ];
-    for (const cron of crons) expect(updateWorkflow).toContain(`cron: "${cron}"`);
+  test('runs only by hand (no schedule, owner 2026-11-14) with the half-second request delay', () => {
+    expect(updateWorkflow).not.toMatch(/^\s*schedule:/m);
+    expect(updateWorkflow).not.toMatch(/^\s*-?\s*cron:/m);
+    expect(updateWorkflow).toContain('workflow_dispatch:');
     expect(updateWorkflow).toContain('MAX_FETCHES: "500"');
     expect(updateWorkflow).toContain('MAX_RETRIES: "2"');
     expect(updateWorkflow).toContain('REQUEST_SLEEP: "0.5"');

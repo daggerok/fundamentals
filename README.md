@@ -175,7 +175,7 @@ bun run data:fetch
 ```
 
 Writes `data/fundamentals/company_tickers.json` + `data/fundamentals/index.json`.  
-GitHub Action **Update SEC data** runs this on a schedule via `astral-sh/setup-uv`.
+GitHub Action **Update SEC data** runs this by hand (`workflow_dispatch`, no schedule since 2026-11-14) via `astral-sh/setup-uv`.
 
 ---
 
@@ -216,4 +216,4 @@ Metric extraction searches every returned taxonomy, including `us-gaap`, `ifrs-f
 
 Debug distinguishes response-wide **Available currencies** from metric-level **Used currencies**. For example, ASML's response contains a few USD facts for derivatives, commitments, and option exercise prices, but its recognized revenue and statement metrics are EUR-only, so enabling USD preference does not change those EUR charts.
 
-GitHub Action **Update SEC data** grows the cache on a schedule (`MAX_FETCHES` per run).
+GitHub Action **Update SEC data** grows the cache on each manual run (`MAX_FETCHES` per run); no schedule since 2026-11-14, refresh locally or dispatch it by hand.
